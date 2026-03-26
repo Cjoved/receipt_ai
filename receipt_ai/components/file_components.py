@@ -19,7 +19,7 @@ UPLOAD_ZONE_ID = FILES_UPLOAD_ZONE_ID
 
 
 def upload_overlay() -> rx.Component:
-    """Global upload modal shown on toolbar click or page drag-enter."""
+    """Global upload modal shown from the toolbar upload action."""
     return rx.cond(
         # Show/hide entire modal overlay from state flag.
         FilesState.show_drop_overlay,
@@ -268,33 +268,6 @@ def file_tree() -> rx.Component:
         width="100%",
         align="start",
     )
-
-def file_card(title: str, size: str) -> rx.Component:
-    """Reusable content card used in the right panel."""
-    return rx.box(
-        # Card body layout.
-        rx.vstack(
-            # Small document type badge.
-            rx.box(
-                rx.text("PDF", size="1", color="white"),
-                bg="#ef4444",
-                border_radius="6px",
-                padding="0.15rem 0.4rem",
-            ),
-            rx.text(title, size="2", color=rx.color("gray", 12)),
-            rx.text(size, size="1", color=MUTED_TEXT),
-            rx.badge("Completed", color_scheme="green", variant="soft"),
-            align="start",
-            spacing="2",
-        ),
-        bg=PANEL_BG,
-        border=f"1px solid {BORDER_COLOR}",
-        border_radius="12px",
-        padding="0.75rem",
-        min_width="160px",
-    )
-
-
 def active_child_file_card(child: dict[str, str]) -> rx.Component:
     """Card used in the main panel for the active folder's child files."""
     return rx.box(
