@@ -9,14 +9,17 @@ class ChatState(rx.State):
     history: list[str] = list_chat_payload()
     draft_message: str = ""
 
+    # Load latest conversation history from the service layer.
     def load_history(self) -> None:
         """Refresh chat history from service layer."""
 
         self.history = list_chat_payload()
 
+    # Keep chat input field synchronized with state.
     def set_draft(self, value: str) -> None:
         self.draft_message = value
 
+    # Submit draft message to local history list.
     def send_draft(self) -> None:
         """Append current draft to chat history."""
 
