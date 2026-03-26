@@ -9,7 +9,7 @@ def top_nav(active_page: str) -> rx.Component:
     return rx.hstack(
         # Brand section (left).
         rx.hstack(
-            rx.heading("LeadsTech", size="5"),
+            rx.heading("Receipt AI", size="5"),
             rx.badge("Private", color_scheme="green"),
         ),
         # Primary navigation (center).
@@ -24,6 +24,7 @@ def top_nav(active_page: str) -> rx.Component:
             rx.color_mode.button(),
             spacing="3",
         ),
+        # Container alignment and shell styling.
         justify="between",
         align="center",
         padding_x="1.25rem",
