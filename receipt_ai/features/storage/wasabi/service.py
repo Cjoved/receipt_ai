@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 from typing import BinaryIO
 
 from botocore.client import BaseClient
@@ -30,14 +31,28 @@ class WasabiStorage:
     # Upload binary stream to a folder and return the saved object key.
     def upload_fileobj(self, folder_path: str, filename: str, file_obj: BinaryIO) -> str:
         object_key = full_key(self._config, f"{folder_path.strip('/')}/{filename}")
+        guessed_type, _ = mimetypes.guess_type(filename)
+        extra_args: dict[str, str] = {}
+        if guessed_type:
+            # Store content type so browsers can render file inline when possible.
+            extra_args["ContentType"] = guessed_type
         try:
-            self._client.upload_fileobj(file_obj, self._config.bucket, object_key)
+            if extra_args:
+                self._client.upload_fileobj(
+                    file_obj,
+                    self._config.bucket,
+                    object_key,
+                    ExtraArgs=extra_args,
+                )
+            else:
+                self._client.upload_fileobj(file_obj, self._config.bucket, object_key)
             return object_key
         except (ClientError, BotoCoreError) as exc:
             raise WasabiStorageError(f"Failed to upload '{filename}': {exc}") from exc
 
     # List direct files inside one folder (non-recursive).
-    def list_folder_files(self, folder_path: str) -> list[str]:
+    def list_folder_file_objects(self, folder_path: str) -> list[dict[str, object]]:
+        """List direct files with metadata (name, size_bytes, last_modified)."""
         prefix = folder_key(self._config, folder_path)
         try:
             response = self._client.list_objects_v2(
@@ -48,12 +63,67 @@ class WasabiStorage:
         except (ClientError, BotoCoreError) as exc:
             raise WasabiStorageError(f"Failed to list folder '{folder_path}': {exc}") from exc
 
-        names: list[str] = []
+        objects: list[dict[str, object]] = []
         for item in response.get("Contents", []):
             key = item.get("Key", "")
             if key and not key.endswith("/"):
-                names.append(key.split("/")[-1])
-        return names
+                objects.append(
+                    {
+                        "name": key.split("/")[-1],
+                        "size_bytes": int(item.get("Size", 0)),
+                        "last_modified": item.get("LastModified"),
+                    }
+                )
+        return objects
+
+    # List direct files inside one folder (non-recursive).
+    def list_folder_files(self, folder_path: str) -> list[str]:
+        return [obj["name"] for obj in self.list_folder_file_objects(folder_path) if isinstance(obj.get("name"), str)]
+
+    # Short-lived HTTPS URL for viewing or downloading an object in the browser.
+    def presigned_get_url(
+        self,
+        object_relative: str,
+        expires_in: int = 3600,
+        *,
+        inline: bool = True,
+    ) -> str:
+        """Return a time-limited GET URL for the given key (folder/file path)."""
+        key = full_key(self._config, object_relative)
+        params: dict[str, str] = {"Bucket": self._config.bucket, "Key": key}
+        guessed_type, _ = mimetypes.guess_type(object_relative)
+        if guessed_type:
+            params["ResponseContentType"] = guessed_type
+        if inline:
+            # Hint browser to open file in viewer instead of forcing attachment download.
+            params["ResponseContentDisposition"] = "inline"
+        else:
+            # Force browser download behavior for explicit download action.
+            params["ResponseContentDisposition"] = "attachment"
+        try:
+            return self._client.generate_presigned_url(
+                "get_object",
+                Params=params,
+                ExpiresIn=expires_in,
+            )
+        except (ClientError, BotoCoreError) as exc:
+            raise WasabiStorageError(
+                f"Failed to presign URL for '{object_relative}': {exc}"
+            ) from exc
+
+    # Read object content as UTF-8 text (used for txt/csv/md inline previews).
+    def read_text(self, object_relative: str, max_bytes: int = 200_000) -> str:
+        """Return decoded text content for a key, capped to avoid huge previews."""
+        key = full_key(self._config, object_relative)
+        try:
+            response = self._client.get_object(Bucket=self._config.bucket, Key=key)
+            body = response["Body"].read(max_bytes)
+            # Replace unknown chars so preview won't crash on mixed encodings.
+            return body.decode("utf-8", errors="replace")
+        except (ClientError, BotoCoreError, UnicodeDecodeError) as exc:
+            raise WasabiStorageError(
+                f"Failed to read text preview for '{object_relative}': {exc}"
+            ) from exc
 
     # Delete one object key from the bucket.
     def delete_object(self, object_key: str) -> None:
@@ -166,21 +236,48 @@ class WasabiStorage:
 
     # List all folders in the bucket.
     def list_folders(self) -> list[str]:
+        base_prefix = self._config.default_prefix.strip("/")
+        request_prefix = f"{base_prefix}/" if base_prefix else ""
+        folder_names: set[str] = set()
+        token: str | None = None
+
         try:
-            response = self._client.list_objects_v2(
-                Bucket=self._config.bucket,
-                Prefix="",
-                Delimiter="/",
-            )
+            while True:
+                kwargs: dict[str, str] = {
+                    "Bucket": self._config.bucket,
+                    "Prefix": request_prefix,
+                    "Delimiter": "/",
+                }
+                if token:
+                    kwargs["ContinuationToken"] = token
+
+                response = self._client.list_objects_v2(**kwargs)
+
+                for item in response.get("CommonPrefixes", []):
+                    prefix = item.get("Prefix", "")
+                    if not prefix:
+                        continue
+                    # Remove configured base prefix from returned absolute prefix.
+                    if request_prefix and prefix.startswith(request_prefix):
+                        prefix = prefix[len(request_prefix):]
+                    prefix = prefix.strip("/")
+                    if prefix:
+                        folder_names.add(prefix.split("/")[0])
+
+                if not response.get("IsTruncated"):
+                    break
+                token = response.get("NextContinuationToken")
         except (ClientError, BotoCoreError) as exc:
             raise WasabiStorageError(f"Failed to list folders: {exc}") from exc
 
-        folders: list[str] = []
-        for item in response.get("CommonPrefixes", []):
-            prefix = item.get("Prefix", "")
-            if prefix.endswith("/"):
-                prefix = prefix[:-1]
-            if prefix:
-                # Keep only last segment in case a global prefix is used.
-                folders.append(prefix.split("/")[-1])
-        return folders
+        # Fallback: derive folders from object keys if no explicit folder markers are present.
+        if not folder_names:
+            for key in self.list_keys_under_prefix(""):
+                normalized = key
+                if request_prefix and normalized.startswith(request_prefix):
+                    normalized = normalized[len(request_prefix):]
+                normalized = normalized.lstrip("/")
+                if "/" in normalized:
+                    folder_names.add(normalized.split("/", 1)[0])
+
+        return sorted(folder_names, key=str.lower)

@@ -1,13 +1,48 @@
 import reflex as rx
+from datetime import datetime
 from typing import Any
+
 from receipt_ai.core.upload_constants import FILES_UPLOAD_ZONE_ID
 from receipt_ai.features.files.file_meta import child_file_meta
 from receipt_ai.features.files.service import list_files_payload
+from receipt_ai.features.files.state_actions_crud import FilesCrudActionsMixin
+from receipt_ai.features.files.state_actions_preview import FilesPreviewActionsMixin
+from receipt_ai.features.files.state_actions_upload import FilesUploadActionsMixin
+from receipt_ai.features.files.state_computed import FilesComputedMixin
 from receipt_ai.features.storage.wasabi import WasabiConfig, WasabiStorage
 
 
 # Module-level singleton cache (not part of Reflex state serialization).
 _WASABI_STORAGE: WasabiStorage | None = None
+
+# Explorer split: client drag until mouseup; Promise resolves width % (rx.call_script + callback).
+_EXPLORER_DIVIDER_DRAG_JS = """
+return new Promise((resolve) => {
+  const root = document.getElementById("files-split-root");
+  if (!root) {
+    resolve(28);
+    return;
+  }
+  const prevSelect = document.body.style.userSelect;
+  document.body.style.userSelect = "none";
+  const move = (e) => {
+    const r = root.getBoundingClientRect();
+    if (r.width <= 0) return;
+    let p = ((e.clientX - r.left) / r.width) * 100;
+    p = Math.max(20, Math.min(80, p));
+    root.style.setProperty("--files-sidebar-pct", p + "%");
+  };
+  const up = () => {
+    window.removeEventListener("mousemove", move);
+    document.body.style.userSelect = prevSelect;
+    const raw = getComputedStyle(root).getPropertyValue("--files-sidebar-pct").trim() || "28%";
+    const n = parseFloat(raw);
+    resolve(Number.isFinite(n) ? Math.round(n) : 28);
+  };
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up, { once: true });
+});
+"""
 
 
 def get_storage() -> WasabiStorage:
@@ -18,8 +53,18 @@ def get_storage() -> WasabiStorage:
     return _WASABI_STORAGE
 
 
-class FilesState(rx.State):
+class FilesState(
+    FilesComputedMixin,
+    FilesCrudActionsMixin,
+    FilesPreviewActionsMixin,
+    FilesUploadActionsMixin,
+    rx.State,
+):
     """State container for files feature."""
+
+    # Files page layout: resizable sidebar (desktop) + mobile tree/content switch.
+    sidebar_width_pct: int = 28
+    files_mobile_view: str = "tree"
 
     files: list[dict[str, str]] = list_files_payload()
     selected_file_name: str = files[0]["name"] if files else ""
@@ -27,16 +72,36 @@ class FilesState(rx.State):
     new_folder_name: str = ""
     show_rename_input: bool = False
     rename_value: str = ""
-    view_mode: str = "grid"
+    view_mode: str = "list"
+    show_delete_confirm: bool = False
+    show_rename_confirm: bool = False
+    show_upload_confirm: bool = False
+    search_query: str = ""
+    active_type_filter: str = "all"
+    sort_mode: str = "modified_desc"
 
     # Upload overlay state (global drag/drop modal).
     show_drop_overlay: bool = False
     is_uploading: bool = False
+    upload_progress_pct: int = 0
     upload_error: str = ""
     upload_zone_id: str = FILES_UPLOAD_ZONE_ID
+    excluded_upload_names: list[str] = []
 
     # Which folder is currently expanded in the sidebar.
     expanded_folder_name: str = ""
+    # Selected file inside the expanded folder (empty = toolbar targets the folder).
+    selected_child_file_name: str = ""
+    # Presigned URL for inline preview in the main panel (no navigation away).
+    preview_url: str = ""
+    # Office iframe URL for doc/docx/xls/xlsx preview.
+    preview_embed_url: str = ""
+    # Raw text content for txt/csv/md preview.
+    preview_text: str = ""
+    # Structured CSV preview content (header + sample rows).
+    preview_csv_headers: list[str] = []
+    preview_csv_rows: list[list[str]] = []
+    preview_error: str = ""
 
     # Demo children files per folder (local mock for now).
     folder_children: dict[str, list[dict[str, str]]] = {
@@ -46,241 +111,379 @@ class FilesState(rx.State):
             {"name": "report.xlsx", "ext": "XLSX", "icon": "file-spreadsheet", "badge": "green"},
         ],
     }
-    # Reload list from the service layer (used on page load).
-    def load_files(self) -> None:
-        """Load files from wasabi and reflect them in the explorer list."""
-        try:
-            storage = self._get_storage()
-            folder_names = storage.list_folders()
-            self.files = [{"name": folder, "size": "-", "file_type": "folder", "status": "Ready"} for folder in folder_names]
 
-            # Ensure local child cache has keys for fetched folders.
-            for folder_name in folder_names:
-                if folder_name not in self.folder_children:
-                    self.folder_children[folder_name] = []
+    @rx.var
+    def has_open_folder(self) -> bool:
+        return self.expanded_folder_name != ""
 
-            self.selected_file_name = self.files[0]["name"] if self.files else ""
-        except Exception as e:
-            self.upload_error = f"Failed to load files: {e}"
+    @rx.var
+    def has_selected_child_file(self) -> bool:
+        return self.selected_child_file_name != ""
 
-    # Show inline input controls for creating a new folder.
-    def open_new_folder_input(self) -> None:
-        self.show_new_folder_input = True
-
-    # Close create-folder form and reset its input value.
-    def cancel_new_folder(self) -> None:
-        """Close create-folder form without applying changes."""
-        self.show_new_folder_input = False
-        self.new_folder_name = ""
-
-    # Keep new-folder input field synchronized with state.
-    def set_new_folder_name(self, value: str) -> None:
-        self.new_folder_name = value
-
-    # Add a new folder entry to the in-memory file list.
-    def create_new_folder(self) -> None:
-        """Create a new folder in Wasabi and reflect it in the explorer list."""
-        new_folder_name = self.new_folder_name.strip()
-        if not new_folder_name:
-            return
-
-        try:
-            storage = self._get_storage()
-            # Create virtual folder object in bucket (key ending with slash).
-            storage.create_folder(new_folder_name)
-
-            self.files.insert(
-                0,
-                {
-                    "name": new_folder_name,
-                    "size": "-",
-                    "file_type": "folder",
-                    "status": "Ready",
-                },
-            )
-            self.folder_children[new_folder_name] = []
-            self.show_new_folder_input = False
-            self.new_folder_name = ""
-        except Exception as e:
-            self.upload_error = f"Failed to create folder: {e}"
-
-    # Open rename form and prefill with selected file/folder name.
-    def open_rename_input(self) -> None:
-        if not self.has_open_folder:
-            return
-        if self.selected_file_name:
-            self.rename_value = self.selected_file_name
-            self.show_rename_input = True
-
-    # Keep rename input synchronized with state.
-    def set_rename_value(self, value: str) -> None:
-        self.rename_value = value
-
-    # Persist rename change into the selected list item.
-    def save_rename(self) -> None:
-        """Rename selected file or folder in wasabi and sync local state"""
-        new_name = self.rename_value.strip()
-        if not new_name:
-            return
-
-        old_name = self.selected_file_name
-        if not old_name:
-            return
-
-        try:
-            storage = self._get_storage()
-            # Rename full folder prefix recursively in Wasabi.
-            storage.rename_prefix(old_name, new_name)
-
-            for item in self.files:
-                if item["name"] == old_name:
-                    item["name"] = new_name
-                    self.selected_file_name = new_name
-                    if old_name in self.folder_children:
-                        self.folder_children[new_name] = self.folder_children.pop(old_name)
-                    if self.expanded_folder_name == old_name:
-                        self.expanded_folder_name = new_name
-                    break
-            self.show_rename_input = False
-            self.rename_value = ""
-        except Exception as e:
-            self.upload_error = f"Failed to rename: {e}"
-
-    # Close rename form without applying changes.
-    def cancel_rename(self) -> None:
-        self.show_rename_input = False
-        self.rename_value = ""
-
-    # Delete currently selected item and move selection to first remaining row.
-    def delete_file(self) -> None:
-        """Delete selected folder in wasabi and remove from UI state."""
-        if not self.has_open_folder:
-            return
-        if not self.selected_file_name:
-            return
-        
-        target_name = self.selected_file_name
-
-        try:
-            storage = self._get_storage()
-            # Delete all keys under this folder prefix recursively.
-            storage.delete_prefix(target_name)
-
-            if target_name in self.folder_children:
-                del self.folder_children[target_name]
-            
-            self.files = [f for f in self.files if f["name"] != target_name]
-            self.selected_file_name = self.files[0]["name"] if self.files else ""
-            self.expanded_folder_name = ""
-        except Exception as e:
-            self.upload_error = f"Failed to delete: {e}"
-       
-    # Open upload modal from the upload icon button.
-    def open_upload_input(self) -> None:
-        """Open upload overlay from toolbar upload button."""
-        if not self.has_open_folder:
-            return
-        self.show_drop_overlay = True
-        self.upload_error = ""
-
-    # Cancel active transfer (if any) and close modal.
-    def cancel_upload(self) -> None:
-        """Cancel active upload and close the overlay."""
-        self.show_drop_overlay = False
-        self.is_uploading = False
-        self.upload_error = ""
-        return rx.cancel_upload(self.upload_zone_id)
-
-    # Save dropped/selected files into local upload directory and add them to UI list.
-    async def upload_files(self, files: list[rx.UploadFile]) -> None:
-        """Persist uploaded files to wasabi and reflect them in explorer list."""
-        if not files:
-            return
+    @rx.var
+    def active_folder_children(self) -> list[dict[str, str]]:
         if not self.expanded_folder_name:
-            self.upload_error = "Please open a folder first."
-            return
+            return []
+        children = self.folder_children.get(self.expanded_folder_name, [])
+        normalized: list[dict[str, str]] = []
+        for child in children:
+            if not isinstance(child, dict):
+                continue
+            name = str(child.get("name", "")).strip()
+            if not name:
+                continue
+            normalized.append(
+                {
+                    "name": name,
+                    "ext": str(child.get("ext", "FILE")),
+                    "icon": str(child.get("icon", "file")),
+                    "badge": str(child.get("badge", "gray")),
+                    "type": str(child.get("type", "File")),
+                    "size": str(child.get("size", "-")),
+                    "size_bytes": str(child.get("size_bytes", "0")),
+                    "modified_at": str(child.get("modified_at", "-")),
+                    "modified_epoch": str(child.get("modified_epoch", "0")),
+                    "status": str(child.get("status", "Completed")),
+                }
+            )
+        return normalized
 
-        self.is_uploading = True
-        self.upload_error = ""
+    @rx.var
+    def visible_folder_children(self) -> list[dict[str, str]]:
+        rows = list(self.active_folder_children)
+        query = self.search_query.strip().lower()
+        filter_key = self.active_type_filter.lower()
 
-        try:
-            storage = self._get_storage()
-            target_folder = self.expanded_folder_name
+        if query:
+            rows = [row for row in rows if query in row.get("name", "").lower()]
 
-            # Upload each file to the target folder.
-            for file in files:
-                await file.seek(0)
-                storage.upload_fileobj(target_folder, file.filename, file.file)
+        if filter_key != "all":
+            filter_map: dict[str, set[str]] = {
+                "pdf": {"PDF"},
+                "image": {"Image"},
+                "doc": {"Document"},
+                "sheet": {"Spreadsheet"},
+                "archive": {"Archive"},
+                "other": {"File"},
+            }
+            allowed = filter_map.get(filter_key, set())
+            rows = [row for row in rows if row.get("type", "") in allowed]
 
-                if target_folder not in self.folder_children:
-                    self.folder_children[target_folder] = []
-                self.folder_children[target_folder].insert(0,child_file_meta(file.filename))
-                self.selected_file_name = file.filename
-                self.show_drop_overlay = False
-        except Exception as e:
-            self.upload_error = f"Upload failed: {e}"
-        finally:
-            self.is_uploading = False
+        if self.sort_mode == "name_asc":
+            rows.sort(key=lambda row: row.get("name", "").lower())
+        elif self.sort_mode == "name_desc":
+            rows.sort(key=lambda row: row.get("name", "").lower(), reverse=True)
+        elif self.sort_mode == "size_desc":
+            rows.sort(key=lambda row: int(row.get("size_bytes", "0")), reverse=True)
+        elif self.sort_mode == "size_asc":
+            rows.sort(key=lambda row: int(row.get("size_bytes", "0")))
+        elif self.sort_mode == "modified_asc":
+            rows.sort(key=lambda row: int(row.get("modified_epoch", "0")))
+        else:
+            rows.sort(key=lambda row: int(row.get("modified_epoch", "0")), reverse=True)
+        return rows
 
+    @rx.var
+    def visible_child_count_label(self) -> str:
+        return f"{len(self.visible_folder_children)} visible"
 
-    # Toggle the expansion state of a folder.
-    def toggle_folder(self, folder_name: str) -> None:
-        """Toggle the expansion state of a folder."""
-        if self.expanded_folder_name == folder_name:
-            self.expanded_folder_name = ""
-            self.selected_file_name = ""
-            return
-        self.expanded_folder_name = folder_name
-        self.selected_file_name = folder_name
+    @rx.var
+    def stats_total_files(self) -> str:
+        return str(len(self.active_folder_children))
 
-        try:
-            storage = self._get_storage()
-            file_names = storage.list_folder_files(folder_name)
-            self.folder_children[folder_name] = [child_file_meta(file_name) for file_name in file_names]
-        except Exception as e:
-            self.upload_error = f"Failed to load folder files: {e}"
+    @rx.var
+    def stats_total_size_label(self) -> str:
+        total = sum(int(row.get("size_bytes", "0")) for row in self.active_folder_children)
+        return self._format_size(total)
 
-    # Switch right panel into grid card mode.
-    def set_grid_view(self) -> None:
-        self.view_mode = "grid"
+    @rx.var
+    def stats_pdf_count(self) -> str:
+        return str(sum(1 for row in self.active_folder_children if row.get("type") == "PDF"))
 
-    # Switch right panel into list/explorer mode.
-    def set_list_view(self) -> None:
-        self.view_mode = "list"
+    @rx.var
+    def stats_image_count(self) -> str:
+        return str(sum(1 for row in self.active_folder_children if row.get("type") == "Image"))
+
+    @rx.var
+    def stats_latest_modified_label(self) -> str:
+        if not self.active_folder_children:
+            return "-"
+        latest = max(self.active_folder_children, key=lambda row: int(row.get("modified_epoch", "0")))
+        return latest.get("modified_at", "-")
+
+    @rx.var
+    def preview_display_kind(self) -> str:
+        """Resolve preview renderer kind from selected file metadata and extension."""
+        name = (self.selected_child_file_name or "").strip()
+        if not name:
+            return "none"
+
+        # Prefer hydrated metadata when available (more reliable than extension parsing alone).
+        selected_row = next(
+            (row for row in self.active_folder_children if row.get("name", "") == name),
+            None,
+        )
+        selected_type = str(selected_row.get("type", "")).lower() if selected_row else ""
+        if selected_type == "image":
+            return "image"
+        if selected_type == "pdf":
+            return "pdf"
+        if selected_type == "spreadsheet":
+            return "csv" if name.lower().endswith(".csv") else "office"
+        if selected_type == "document":
+            return "text" if name.lower().endswith((".txt", ".md")) else "office"
+
+        # Fallback to extension-based detection.
+        lowered = name.lower().split("?", 1)[0].split("#", 1)[0].strip()
+        if "." not in lowered:
+            return "other"
+        ext = lowered.rsplit(".", 1)[-1].strip(" )].,;")
+        if ext in {"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "jfif"}:
+            return "image"
+        if ext == "pdf":
+            return "pdf"
+        if ext == "csv":
+            return "csv"
+        if ext in {"txt", "md"}:
+            return "text"
+        if ext in {"doc", "docx", "xls", "xlsx"}:
+            return "office"
+        return "other"
+
+    # --- Shared helpers used by action/computed mixins ---
+    def _format_size(self, size_bytes: int) -> str:
+        """Human-readable size label for table/card display."""
+        if size_bytes <= 0:
+            return "-"
+        units = ["B", "KB", "MB", "GB", "TB"]
+        value = float(size_bytes)
+        idx = 0
+        while value >= 1024 and idx < len(units) - 1:
+            value /= 1024
+            idx += 1
+        return f"{value:.1f} {units[idx]}"
+
+    def _format_modified(self, value: Any) -> str:
+        """Format LastModified datetime into compact label."""
+        if isinstance(value, datetime):
+            return value.strftime("%b %d, %Y %I:%M %p")
+        return "-"
+
+    def _modified_epoch(self, value: Any) -> int:
+        """Sortable epoch value for LastModified."""
+        if isinstance(value, datetime):
+            return int(value.timestamp())
+        return 0
+
+    def _hydrate_child(self, name: str, size_bytes: int = 0, modified_at: Any = None) -> dict[str, str]:
+        """Attach table/grid metadata on top of extension icon metadata."""
+        meta = child_file_meta(name)
+        return {
+            **meta,
+            "size": self._format_size(size_bytes),
+            "size_bytes": str(size_bytes),
+            "modified_at": self._format_modified(modified_at),
+            "modified_epoch": str(self._modified_epoch(modified_at)),
+            "status": "Completed",
+        }
+
+    def _reload_folder_children(self, folder_name: str) -> None:
+        """Refresh folder files from Wasabi with full metadata."""
+        storage = self._get_storage()
+        storage_folder = self._resolve_storage_folder_name(folder_name)
+        file_objects = storage.list_folder_file_objects(storage_folder)
+        hydrated_children = [
+            self._hydrate_child(
+                str(obj.get("name", "")),
+                int(obj.get("size_bytes", 0) or 0),
+                obj.get("last_modified"),
+            )
+            for obj in file_objects
+            if obj.get("name")
+        ]
+        # Reassign dictionary so Reflex reliably detects state change.
+        self.folder_children = {**self.folder_children, folder_name: hydrated_children}
+
+    def _clear_preview_state(self) -> None:
+        """Reset all preview buffers and URLs in one place."""
+        self.preview_url = ""
+        self.preview_embed_url = ""
+        self.preview_text = ""
+        self.preview_csv_headers = []
+        self.preview_csv_rows = []
+        self.preview_error = ""
 
     # Access shared Wasabi adapter outside serialized Reflex state.
     def _get_storage(self) -> WasabiStorage:
         return get_storage()
-    
-    @rx.var
-    # True when a folder expanded (enables folder-only actions)
-    def has_open_folder(self) -> bool:
-        return self.expanded_folder_name != ""
-    
-    @rx.var
-    # Folder-only list for rendering expandable rows in sidebar.
-    def folder_names(self) -> list[str]:
-        return [item["name"] for item in self.files if item.get("file_type", "").lower() == "folder"]
 
-    @rx.var
-    # Child file rows for the currently expanded folder.
-    def active_folder_children(self) -> list[dict[str, str]]:
-        if not self.expanded_folder_name:
-            return []
-        children: list[Any] = self.folder_children.get(self.expanded_folder_name, [])
-        normalized: list[dict[str, str]] = []
-        for child in children:
-            if isinstance(child, dict):
-                name = child.get("name", "")
-                if name:
-                    normalized.append(
-                        {
-                            "name": name,
-                            "ext": child.get("ext", "FILE"),
-                            "icon": child.get("icon", "file"),
-                            "badge": child.get("badge", "gray"),
-                        }
-                    )
-            elif isinstance(child, str):
-                normalized.append(child_file_meta(child))
-        return normalized
+    def set_sidebar_width_pct(self, value: int) -> None:
+        """Clamp to TA Dashboard range (20%–80%)."""
+        self.sidebar_width_pct = max(20, min(80, int(value)))
+
+    def commit_sidebar_width_from_drag(self, value: Any) -> None:
+        """Apply width % returned from client after explorer divider drag ends."""
+        try:
+            n = int(round(float(value)))
+        except (TypeError, ValueError):
+            n = int(self.sidebar_width_pct)
+        self.set_sidebar_width_pct(n)
+
+    def on_explorer_divider_mouse_down(self):
+        """Start client-side drag; syncs state once on mouseup."""
+        return rx.call_script(
+            _EXPLORER_DIVIDER_DRAG_JS,
+            callback=FilesState.commit_sidebar_width_from_drag,
+        )
+
+    def set_files_mobile_view(self, view: str) -> None:
+        if view in ("tree", "content"):
+            self.files_mobile_view = view
+
+    def show_files_tree_mobile(self) -> None:
+        self.files_mobile_view = "tree"
+
+    def show_files_content_mobile(self) -> None:
+        self.files_mobile_view = "content"
+
+    def _resolve_storage_folder_name(self, folder_name: str) -> str:
+        """Map UI folder label to actual Wasabi folder key when names differ."""
+        if not folder_name:
+            return folder_name
+        storage = self._get_storage()
+        try:
+            folders = storage.list_folders()
+        except Exception:
+            return folder_name
+        if folder_name in folders:
+            return folder_name
+
+        candidates = [
+            folder_name.replace(" ", "_"),
+            folder_name.replace("_", " "),
+        ]
+        for candidate in candidates:
+            if candidate in folders:
+                return candidate
+
+        # Last fallback: compare normalized names (ignore spaces/underscores and case).
+        normalized_target = folder_name.replace(" ", "").replace("_", "").lower()
+        for existing in folders:
+            if existing.replace(" ", "").replace("_", "").lower() == normalized_target:
+                return existing
+        return folder_name
+
+    # --- Event handlers defined on FilesState (safe for Reflex binding) ---
+    def load_files(self) -> None:
+        return FilesCrudActionsMixin.load_files(self)
+
+    def open_new_folder_input(self) -> None:
+        return FilesCrudActionsMixin.open_new_folder_input(self)
+
+    def cancel_new_folder(self) -> None:
+        return FilesCrudActionsMixin.cancel_new_folder(self)
+
+    def set_new_folder_name(self, value: str) -> None:
+        return FilesCrudActionsMixin.set_new_folder_name(self, value)
+
+    def create_new_folder(self) -> None:
+        return FilesCrudActionsMixin.create_new_folder(self)
+
+    def open_rename_input(self) -> None:
+        return FilesCrudActionsMixin.open_rename_input(self)
+
+    def set_rename_value(self, value: str) -> None:
+        return FilesCrudActionsMixin.set_rename_value(self, value)
+
+    def save_rename(self) -> None:
+        return FilesCrudActionsMixin.save_rename(self)
+
+    def cancel_rename(self) -> None:
+        return FilesCrudActionsMixin.cancel_rename(self)
+
+    def request_rename_confirm(self) -> None:
+        return FilesCrudActionsMixin.request_rename_confirm(self)
+
+    def cancel_rename_confirm(self) -> None:
+        return FilesCrudActionsMixin.cancel_rename_confirm(self)
+
+    def delete_file(self) -> None:
+        return FilesCrudActionsMixin.delete_file(self)
+
+    def request_delete_confirm(self) -> None:
+        return FilesCrudActionsMixin.request_delete_confirm(self)
+
+    def request_delete_child_confirm(self, filename: str) -> None:
+        return FilesCrudActionsMixin.request_delete_child_confirm(self, filename)
+
+    def cancel_delete_confirm(self) -> None:
+        return FilesCrudActionsMixin.cancel_delete_confirm(self)
+
+    def confirm_delete(self) -> None:
+        return FilesCrudActionsMixin.confirm_delete(self)
+
+    def delete_child_file(self, filename: str) -> None:
+        return FilesCrudActionsMixin.delete_child_file(self, filename)
+
+    def toggle_folder(self, folder_name: str) -> None:
+        return FilesCrudActionsMixin.toggle_folder(self, folder_name)
+
+    def set_grid_view(self) -> None:
+        return FilesCrudActionsMixin.set_grid_view(self)
+
+    def set_list_view(self) -> None:
+        return FilesCrudActionsMixin.set_list_view(self)
+
+    def set_search_query(self, value: str) -> None:
+        return FilesCrudActionsMixin.set_search_query(self, value)
+
+    def clear_search_query(self) -> None:
+        return FilesCrudActionsMixin.clear_search_query(self)
+
+    def set_type_filter(self, value: str) -> None:
+        return FilesCrudActionsMixin.set_type_filter(self, value)
+
+    def set_sort_mode(self, value: str) -> None:
+        return FilesCrudActionsMixin.set_sort_mode(self, value)
+
+    def _refresh_preview_url(self) -> None:
+        return FilesPreviewActionsMixin._refresh_preview_url(self)
+
+    def select_child_file(self, filename: str) -> None:
+        return FilesPreviewActionsMixin.select_child_file(self, filename)
+
+    def close_preview(self) -> None:
+        return FilesPreviewActionsMixin.close_preview(self)
+
+    def download_selected_file(self):
+        return FilesPreviewActionsMixin.download_selected_file(self)
+
+    def open_upload_input(self) -> None:
+        return FilesUploadActionsMixin.open_upload_input(self)
+
+    def cancel_upload(self) -> list:
+        return FilesUploadActionsMixin.cancel_upload(self)
+
+    def request_upload_confirm(self) -> None:
+        return FilesUploadActionsMixin.request_upload_confirm(self)
+
+    def cancel_upload_confirm(self) -> None:
+        return FilesUploadActionsMixin.cancel_upload_confirm(self)
+
+    def exclude_upload_file(self, filename: str) -> None:
+        return FilesUploadActionsMixin.exclude_upload_file(self, filename)
+
+    def include_upload_file(self, filename: str) -> None:
+        return FilesUploadActionsMixin.include_upload_file(self, filename)
+
+    def clear_upload_selection(self):
+        return FilesUploadActionsMixin.clear_upload_selection(self)
+
+    async def upload_files(self, files: list[rx.UploadFile]):
+        return await FilesUploadActionsMixin.upload_files(self, files)
+
+    async def upload_panel_drop(self, files: list[rx.UploadFile]):
+        return await FilesUploadActionsMixin.upload_panel_drop(self, files)
+
+    def track_upload_progress(self, prog: dict):
+        return FilesUploadActionsMixin.track_upload_progress(self, prog)
