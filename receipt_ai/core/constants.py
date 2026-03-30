@@ -1,12 +1,29 @@
-import reflex as rx
+"""Global UI constants.
 
-APP_BACKGROUND = rx.color("gray", 1)
-APP_FOREGROUND = rx.color("gray", 12)
-PANEL_BG = rx.color("gray", 2)
-SUBTLE_BG = rx.color("gray", 3)
-BORDER_COLOR = rx.color("gray", 6)
-MUTED_TEXT = rx.color("gray", 10)
-SECONDARY_TEXT = rx.color("gray", 11)
+Semantic colors are defined in :mod:`receipt_ai.core.theme.tokens` and re-exported
+here for backward compatibility. Prefer importing ``theme.tokens`` in new code.
+"""
+
+from receipt_ai.core.theme.tokens import (
+    RADIUS_LG,
+    RADIUS_MD,
+    RADIUS_SM,
+    RADIUS_XL,
+    RADIUS_FULL,
+    SHADOW_LG,
+    SHADOW_MD,
+    SHADOW_NAV,
+    SHADOW_SM,
+    BLUR_NAV,
+    NAV_HEIGHT,
+    border_default as BORDER_COLOR,
+    surface_canvas as APP_BACKGROUND,
+    surface_panel as PANEL_BG,
+    surface_subtle as SUBTLE_BG,
+    text_primary as APP_FOREGROUND,
+    text_muted as MUTED_TEXT,
+    text_secondary as SECONDARY_TEXT,
+)
 
 # Global UI scale tokens (single place to tune sizing).
 ICON_SIZE_XS = 16
