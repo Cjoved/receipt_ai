@@ -1,6 +1,7 @@
 import reflex as rx
 
 from receipt_ai.components.ui.buttons import icon_button
+from receipt_ai.components.ui.modals import confirm_modal
 from receipt_ai.core.constants import (
     BORDER_COLOR,
     ICON_SIZE_SM,
@@ -22,6 +23,23 @@ from receipt_ai.core.theme.tokens import (
 from receipt_ai.features.chat.state import ChatState
 
 _USER_BUBBLE_BG = _mode("#16a34a", "#22c55e")
+
+
+def new_chat_confirm_modal() -> rx.Component:
+    return confirm_modal(
+        open_state=ChatState.show_new_chat_confirm,
+        title="Start a new chat?",
+        body=rx.text(
+            "This clears the current conversation from the screen. Continue?",
+            size="2",
+            color=rx.color("gray", 11),
+        ),
+        confirm_label="New chat",
+        on_confirm=ChatState.confirm_new_chat,
+        on_cancel=ChatState.cancel_new_chat_confirm,
+        confirm_color_scheme="green",
+    )
+
 
 _PANEL = {
     "width": "100%",
@@ -97,8 +115,9 @@ def chat_history() -> rx.Component:
                 size="2",
                 color_scheme="green",
                 variant="solid",
-                on_click=ChatState.new_chat,
+                on_click=ChatState.open_new_chat_confirm,
             ),
+            new_chat_confirm_modal(),
             rx.vstack(
                 rx.foreach(
                     ChatState.sidebar_threads,

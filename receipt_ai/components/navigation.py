@@ -61,6 +61,7 @@ def _notif_popover() -> rx.Component:
             align="end",
             side_offset=8,
         ),
+        modal=False,
     )
 
 
@@ -112,6 +113,7 @@ def _account_menu() -> rx.Component:
             align="end",
             size="2",
         ),
+        modal=False,
     )
 
 

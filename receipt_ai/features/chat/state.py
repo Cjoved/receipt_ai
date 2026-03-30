@@ -43,6 +43,7 @@ class ChatState(rx.State):
 
     chat_sidebar_width_pct: int = 22
     chat_mobile_view: str = "history"
+    show_new_chat_confirm: bool = False
 
     @rx.var
     def chat_sidebar_width_css(self) -> str:
@@ -93,7 +94,19 @@ class ChatState(rx.State):
         ]
         self.draft_message = ""
 
+    def open_new_chat_confirm(self) -> None:
+        self.show_new_chat_confirm = True
+
+    def cancel_new_chat_confirm(self) -> None:
+        self.show_new_chat_confirm = False
+
+    def confirm_new_chat(self) -> None:
+        self.show_new_chat_confirm = False
+        self.messages = []
+        self.draft_message = ""
+
     def new_chat(self) -> None:
+        """Clear thread without confirmation (internal / legacy)."""
         self.messages = []
         self.draft_message = ""
 

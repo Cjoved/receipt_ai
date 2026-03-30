@@ -41,7 +41,14 @@ NAV_SHELL_CSS = """
 .nav-desktop-only {
   display: none !important;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.375rem;
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+}
+.nav-desktop-only a {
+  position: relative;
+  z-index: 1;
 }
 @media (min-width: 640px) {
   .nav-desktop-only {
@@ -156,6 +163,26 @@ FILES_SHELL_CSS = """
 }
 .files-divider-grip:hover {
   background: var(--files-divider-hover, rgba(34, 197, 94, 0.18));
+}
+.files-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  align-items: stretch;
+}
+.files-grid-card {
+  box-sizing: border-box;
+  min-height: 200px;
+}
+.files-view-toggle {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  gap: 0.375rem;
+}
+.files-no-folder-placeholder {
+  box-sizing: border-box;
+  padding: 0.5rem 0.25rem;
 }
 """
 

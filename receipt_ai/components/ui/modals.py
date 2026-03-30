@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import reflex as rx
 
 
 def confirm_modal(
     *,
     open_state,
-    title: str,
+    title: str | rx.Component,
     body: rx.Component,
     confirm_label: str,
     on_confirm,
