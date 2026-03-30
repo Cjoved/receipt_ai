@@ -1,4 +1,6 @@
 import reflex as rx
+from reflex.components.core.upload import upload_file
+from reflex.event import EventVar
 
 from receipt_ai.components.ui.buttons import icon_button, panel_action_button
 from receipt_ai.components.ui.modals import confirm_modal
@@ -50,18 +52,32 @@ def delete_confirm_modal() -> rx.Component:
     """Confirmation modal for destructive delete action."""
     return confirm_modal(
         open_state=FilesState.show_delete_confirm,
-        title="Delete item?",
+        title=rx.cond(
+            FilesState.selected_child_file_name != "",
+            "Delete this file?",
+            "Delete this folder?",
+        ),
         body=rx.cond(
             FilesState.selected_child_file_name != "",
-            rx.text(
-                "This will permanently delete file: ",
-                FilesState.delete_target_label,
-                color=rx.color("gray", 11),
+            rx.vstack(
+                rx.text(
+                    "This permanently removes the file from storage. Name:",
+                    size="2",
+                    color=rx.color("gray", 11),
+                ),
+                rx.text(FilesState.delete_target_label, weight="bold", color=rx.color("gray", 12)),
+                spacing="1",
+                align="start",
             ),
-            rx.text(
-                "This will permanently delete folder and all files: ",
-                FilesState.delete_target_label,
-                color=rx.color("gray", 11),
+            rx.vstack(
+                rx.text(
+                    "This permanently deletes the folder and everything inside it:",
+                    size="2",
+                    color=rx.color("gray", 11),
+                ),
+                rx.text(FilesState.delete_target_label, weight="bold", color=rx.color("gray", 12)),
+                spacing="1",
+                align="start",
             ),
         ),
         confirm_label="Delete",
@@ -88,7 +104,7 @@ def rename_confirm_modal() -> rx.Component:
 
 
 def upload_confirm_modal() -> rx.Component:
-    """Confirmation modal before uploading staged files."""
+    """Confirmation modal before uploading staged files (toolbar upload)."""
     return confirm_modal(
         open_state=FilesState.show_upload_confirm,
         title="Upload selected files?",
@@ -104,6 +120,126 @@ def upload_confirm_modal() -> rx.Component:
             )
         ),
         on_cancel=FilesState.cancel_upload_confirm,
+    )
+
+
+def panel_drop_confirm_layer() -> rx.Component:
+    """Inline confirm (not alert_dialog portal) so Confirm keeps UploadFilesContext for rx.upload_files."""
+    return rx.cond(
+        FilesState.show_panel_drop_confirm,
+        rx.box(
+            rx.box(
+                rx.vstack(
+                    rx.heading("Upload dropped files?", size="4", color=text_primary),
+                    rx.text(
+                        "Ang mga file na ini-drop ay ia-upload sa folder na ito:",
+                        size="2",
+                        color=rx.color("gray", 11),
+                    ),
+                    rx.text(FilesState.expanded_folder_name, weight="bold", color=rx.color("gray", 12)),
+                    rx.hstack(
+                        rx.button(
+                            "Cancel",
+                            variant="outline",
+                            size="2",
+                            on_click=FilesState.cancel_panel_drop_confirm,
+                        ),
+                        rx.button(
+                            "Upload",
+                            size="2",
+                            color_scheme="green",
+                            on_click=FilesState.confirm_panel_drop_upload,
+                        ),
+                        spacing="3",
+                        justify="end",
+                        width="100%",
+                        margin_top="0.75rem",
+                    ),
+                    spacing="2",
+                    width="100%",
+                    align="start",
+                ),
+                padding="1.25rem",
+                border_radius="14px",
+                bg=PANEL_BG,
+                border=f"1px solid {BORDER_COLOR}",
+                box_shadow="0 24px 80px rgba(2, 6, 23, 0.45)",
+                max_width="min(420px, 92vw)",
+            ),
+            position="fixed",
+            inset="0",
+            z_index="10000",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            padding="1rem",
+            background="rgba(2, 6, 23, 0.78)",
+            backdrop_filter="blur(4px)",
+        ),
+        rx.fragment(),
+    )
+
+
+def files_explorer_no_folder_placeholder() -> rx.Component:
+    """Main files panel when no folder is selected (startup / collapsed explorer)."""
+    return rx.box(
+        rx.vstack(
+            rx.box(
+                rx.icon("folder-open", size=40, color=accent_muted_fg),
+                padding="1.25rem",
+                border_radius="16px",
+                bg=accent_soft_bg,
+                border=f"1px solid {border_accent}",
+            ),
+            rx.heading("Pumili muna ng folder", size="5", color=text_primary),
+            rx.text(
+                "I-click ang folder sa Explorer sa kaliwa para makita ang mga file, preview, at pag-upload dito.",
+                size=TEXT_SIZE_MD,
+                color=MUTED_TEXT,
+                text_align="center",
+                max_width="28rem",
+            ),
+            rx.text(
+                "Tip: Pagkatapos mag-expand, piliin ang file sa grid o list para buksan ang preview.",
+                size=TEXT_SIZE_SM,
+                color=rx.color("gray", 10),
+                text_align="center",
+            ),
+            spacing="3",
+            align="center",
+            justify="center",
+            width="100%",
+            min_height="min(52vh, 420px)",
+            class_name="files-no-folder-placeholder",
+        ),
+        width="100%",
+    )
+
+
+def download_confirm_modal() -> rx.Component:
+    """Confirmation before opening a presigned download link."""
+    return confirm_modal(
+        open_state=FilesState.show_download_confirm,
+        title="Download this file?",
+        body=rx.vstack(
+            rx.text(
+                "Your browser will open a secure link to download:",
+                size="2",
+                color=rx.color("gray", 11),
+            ),
+            rx.text(FilesState.selected_child_file_name, weight="bold", color=rx.color("gray", 12)),
+            rx.text(
+                "Use your browser’s download dialog to save the file.",
+                size="1",
+                color=rx.color("gray", 10),
+            ),
+            spacing="2",
+            align="start",
+        ),
+        confirm_label="Download",
+        on_confirm=FilesState.confirm_download,
+        on_cancel=FilesState.cancel_download_confirm,
+        confirm_color_scheme="green",
     )
 
 
@@ -167,20 +303,20 @@ def upload_progress_overlay(*, compact: bool = False) -> rx.Component:
 def upload_overlay() -> rx.Component:
     """Global upload modal shown from the toolbar upload action."""
     return rx.cond(
-        # Show/hide entire modal overlay from state flag.
         FilesState.show_drop_overlay,
         rx.box(
-            # Centered modal container on top of darkened full-screen backdrop.
             rx.box(
                 upload_progress_overlay(compact=True),
-                # Main upload dropzone: supports drag/drop and click-to-browse.
                 rx.upload(
                     rx.box(
-                        # Visual content inside the dropzone.
                         rx.vstack(
                             rx.icon("upload", size=ICON_SIZE_SM),
                             rx.heading("Upload files", size=HEADING_SIZE_SM),
-                            rx.text("Drag files here or click to browse", size=TEXT_SIZE_SM, color=rx.color("gray", 10)),
+                            rx.text(
+                                "Drag files here or click to browse",
+                                size=TEXT_SIZE_SM,
+                                color=rx.color("gray", 10),
+                            ),
                             spacing="1",
                             align="center",
                         ),
@@ -199,7 +335,6 @@ def upload_overlay() -> rx.Component:
                     accept=FILES_UPLOAD_ACCEPT,
                     width="100%",
                 ),
-                # Staged upload queue: review files before clicking Upload.
                 rx.vstack(
                     rx.hstack(
                         rx.text("Queue", size=TEXT_SIZE_SM, color=rx.color("gray", 11), weight="medium"),
@@ -261,7 +396,6 @@ def upload_overlay() -> rx.Component:
                     padding="0.5rem",
                     bg=rx.color("gray", 1),
                 ),
-                # Action row for upload and cancel.
                 rx.hstack(
                     rx.button(
                         "Upload",
@@ -279,13 +413,11 @@ def upload_overlay() -> rx.Component:
                     justify="end",
                     width="100%",
                 ),
-                # Helper note to teach both browse + drag interaction.
                 rx.text(
                     "Tip: Select or drag files first, review the queue, then click Upload.",
                     size=TEXT_SIZE_SM,
                     color=rx.color("gray", 10),
                 ),
-                # Inline error message area for failed upload attempts.
                 rx.cond(
                     FilesState.upload_error != "",
                     rx.text(FilesState.upload_error, color="red", size=TEXT_SIZE_SM),
@@ -379,7 +511,7 @@ def file_tree() -> rx.Component:
                         "Create",
                         size="1",
                         on_click=FilesState.create_new_folder,
-                        disabled=~FilesState.can_create_new_folder,
+                        disabled=rx.cond(FilesState.create_folder_btn_enabled, False, True),
                     ),
                     rx.button("Cancel", size="1", variant="outline", on_click=FilesState.cancel_new_folder),
                     width="100%",
@@ -407,7 +539,7 @@ def file_tree() -> rx.Component:
                         "Save",
                         size="1",
                         on_click=FilesState.request_rename_confirm,
-                        disabled=~FilesState.can_save_rename,
+                        disabled=rx.cond(FilesState.rename_save_btn_enabled, False, True),
                     ),
                     rx.button("Cancel", size="1", variant="outline", on_click=FilesState.cancel_rename),
                     width="100%",
@@ -593,6 +725,8 @@ def active_child_file_card(child: dict[str, str]) -> rx.Component:
         padding="1rem",
         min_width="200px",
         min_height="200px",
+        height="100%",
+        class_name="files-grid-card",
         cursor="pointer",
         _hover={"border_color": border_accent},
         on_click=FilesState.select_child_file(child["name"]),
@@ -704,182 +838,166 @@ def stats_card(title: str, value, hint: str = "") -> rx.Component:
 
 
 def file_preview_panel() -> rx.Component:
-    """Inline preview panel (image/PDF) rendered in the same page."""
+    """Inline preview for the selected file (only rendered when a file is selected)."""
     return rx.box(
-        rx.cond(
-            FilesState.selected_child_file_name == "",
-            rx.vstack(
-                rx.icon("panel-right", size=ICON_SIZE_MD, color=MUTED_TEXT),
-                rx.text(
-                    "Pumili ng file sa listahan — lalabas ang preview dito.",
-                    size=TEXT_SIZE_MD,
-                    color=MUTED_TEXT,
-                    text_align="center",
+        rx.vstack(
+            rx.hstack(
+                rx.icon("file-text", size=ICON_SIZE_SM, color=rx.color("gray", 11)),
+                rx.text(FilesState.selected_child_file_name, size=TEXT_SIZE_MD, weight="medium"),
+                rx.spacer(),
+                icon_button(
+                    "download",
+                    "Download file",
+                    on_click=FilesState.request_download_confirm,
                 ),
-                spacing="2",
-                align="center",
-                justify="center",
+                icon_button(
+                    "x",
+                    "Close preview",
+                    on_click=FilesState.close_preview,
+                ),
                 width="100%",
-                min_height="240px",
+                align="center",
             ),
-            rx.vstack(
-                rx.hstack(
-                    rx.icon("file-text", size=ICON_SIZE_SM, color=rx.color("gray", 11)),
-                    rx.text(FilesState.selected_child_file_name, size=TEXT_SIZE_MD, weight="medium"),
-                    rx.spacer(),
-                    icon_button(
-                        "download",
-                        "Download file",
-                        on_click=FilesState.download_selected_file,
-                    ),
-                    icon_button(
-                        "x",
-                        "Close preview",
-                        on_click=FilesState.close_preview,
-                    ),
-                    width="100%",
-                    align="center",
-                ),
-                rx.box(
+            rx.box(
+                rx.cond(
+                    FilesState.preview_error != "",
+                    rx.text(FilesState.preview_error, color="red", size=TEXT_SIZE_SM),
                     rx.cond(
-                        FilesState.preview_error != "",
-                        rx.text(FilesState.preview_error, color="red", size=TEXT_SIZE_SM),
-                        rx.cond(
-                            FilesState.preview_display_kind == "image",
-                            rx.box(
-                                rx.image(
-                                    src=FilesState.preview_url,
-                                    width="100%",
-                                    height="100%",
-                                    object_fit="contain",
-                                ),
+                        FilesState.preview_display_kind == "image",
+                        rx.box(
+                            rx.image(
+                                src=FilesState.preview_url,
                                 width="100%",
                                 height="100%",
-                                overflow="auto",
+                                object_fit="contain",
                             ),
-                            rx.cond(
-                                FilesState.preview_display_kind == "pdf",
-                                rx.el.iframe(
-                                    src=FilesState.preview_url,
-                                    width="100%",
-                                    height="100%",
-                                    style={"border": "none", "borderRadius": "8px"},
-                                ),
-                                rx.vstack(
-                                    rx.cond(
-                                        FilesState.preview_display_kind == "csv",
-                                        rx.box(
-                                            rx.el.table(
-                                                rx.el.thead(
-                                                    rx.el.tr(
+                            width="100%",
+                            height="100%",
+                            overflow="auto",
+                        ),
+                        rx.cond(
+                            FilesState.preview_display_kind == "pdf",
+                            rx.el.iframe(
+                                src=FilesState.preview_url,
+                                width="100%",
+                                height="100%",
+                                style={"border": "none", "borderRadius": "8px"},
+                            ),
+                            rx.vstack(
+                                rx.cond(
+                                    FilesState.preview_display_kind == "csv",
+                                    rx.box(
+                                        rx.el.table(
+                                            rx.el.thead(
+                                                rx.el.tr(
+                                                    rx.foreach(
+                                                        FilesState.preview_csv_headers,
+                                                        lambda header: rx.el.th(
+                                                            header,
+                                                            style={
+                                                                "textAlign": "left",
+                                                                "padding": "0.5rem 0.6rem",
+                                                                "borderBottom": f"1px solid {rx.color('gray', 6)}",
+                                                                "position": "sticky",
+                                                                "top": "0",
+                                                                "background": rx.color("gray", 2),
+                                                                "zIndex": "1",
+                                                            },
+                                                        ),
+                                                    )
+                                                )
+                                            ),
+                                            rx.el.tbody(
+                                                rx.foreach(
+                                                    FilesState.preview_csv_rows,
+                                                    lambda row: rx.el.tr(
                                                         rx.foreach(
-                                                            FilesState.preview_csv_headers,
-                                                            lambda header: rx.el.th(
-                                                                header,
+                                                            row,
+                                                            lambda cell: rx.el.td(
+                                                                cell,
                                                                 style={
-                                                                    "textAlign": "left",
-                                                                    "padding": "0.5rem 0.6rem",
-                                                                    "borderBottom": f"1px solid {rx.color('gray', 6)}",
-                                                                    "position": "sticky",
-                                                                    "top": "0",
-                                                                    "background": rx.color("gray", 2),
-                                                                    "zIndex": "1",
+                                                                    "padding": "0.45rem 0.6rem",
+                                                                    "borderBottom": f"1px solid {rx.color('gray', 4)}",
+                                                                    "whiteSpace": "nowrap",
+                                                                    "fontFamily": "monospace",
+                                                                    "fontSize": "12px",
                                                                 },
                                                             ),
                                                         )
-                                                    )
-                                                ),
-                                                rx.el.tbody(
-                                                    rx.foreach(
-                                                        FilesState.preview_csv_rows,
-                                                        lambda row: rx.el.tr(
-                                                            rx.foreach(
-                                                                row,
-                                                                lambda cell: rx.el.td(
-                                                                    cell,
-                                                                    style={
-                                                                        "padding": "0.45rem 0.6rem",
-                                                                        "borderBottom": f"1px solid {rx.color('gray', 4)}",
-                                                                        "whiteSpace": "nowrap",
-                                                                        "fontFamily": "monospace",
-                                                                        "fontSize": "12px",
-                                                                    },
-                                                                ),
-                                                            )
-                                                        ),
-                                                    )
-                                                ),
-                                                style={
-                                                    "width": "max-content",
-                                                    "minWidth": "100%",
-                                                    "borderCollapse": "collapse",
-                                                },
+                                                    ),
+                                                )
+                                            ),
+                                            style={
+                                                "width": "max-content",
+                                                "minWidth": "100%",
+                                                "borderCollapse": "collapse",
+                                            },
+                                        ),
+                                        width="100%",
+                                        height="100%",
+                                        overflow="auto",
+                                        border=f"1px solid {BORDER_COLOR}",
+                                        border_radius="8px",
+                                    ),
+                                    rx.cond(
+                                        FilesState.preview_display_kind == "text",
+                                        rx.box(
+                                            rx.text(
+                                                FilesState.preview_text,
+                                                size=TEXT_SIZE_SM,
+                                                color=rx.color("gray", 12),
+                                                white_space="pre-wrap",
+                                                font_family="monospace",
                                             ),
                                             width="100%",
                                             height="100%",
                                             overflow="auto",
                                             border=f"1px solid {BORDER_COLOR}",
                                             border_radius="8px",
+                                            padding="0.75rem",
                                         ),
                                         rx.cond(
-                                            FilesState.preview_display_kind == "text",
-                                            rx.box(
-                                                rx.text(
-                                                    FilesState.preview_text,
-                                                    size=TEXT_SIZE_SM,
-                                                    color=rx.color("gray", 12),
-                                                    white_space="pre-wrap",
-                                                    font_family="monospace",
-                                                ),
+                                            FilesState.preview_display_kind == "office",
+                                            rx.el.iframe(
+                                                src=FilesState.preview_embed_url,
                                                 width="100%",
                                                 height="100%",
-                                                overflow="auto",
-                                                border=f"1px solid {BORDER_COLOR}",
-                                                border_radius="8px",
-                                                padding="0.75rem",
+                                                style={"border": "none", "borderRadius": "8px"},
                                             ),
-                                            rx.cond(
-                                                FilesState.preview_display_kind == "office",
-                                                rx.el.iframe(
-                                                    src=FilesState.preview_embed_url,
-                                                    width="100%",
-                                                    height="100%",
-                                                    style={"border": "none", "borderRadius": "8px"},
+                                            rx.vstack(
+                                                rx.text(
+                                                    "Walang inline preview para sa file type na ito.",
+                                                    size=TEXT_SIZE_SM,
+                                                    color=MUTED_TEXT,
                                                 ),
-                                                rx.vstack(
-                                                    rx.text(
-                                                        "Walang inline preview para sa file type na ito.",
-                                                        size=TEXT_SIZE_SM,
-                                                        color=MUTED_TEXT,
-                                                    ),
-                                                    rx.link(
-                                                        "Buksan gamit ang link (bagong tab)",
-                                                        href=FilesState.preview_url,
-                                                        is_external=True,
-                                                        size="2",
-                                                    ),
-                                                    spacing="2",
-                                                    align="start",
+                                                rx.link(
+                                                    "Buksan gamit ang link (bagong tab)",
+                                                    href=FilesState.preview_url,
+                                                    is_external=True,
+                                                    size="2",
                                                 ),
+                                                spacing="2",
+                                                align="start",
                                             ),
                                         ),
                                     ),
-                                    width="100%",
-                                    height="100%",
                                 ),
+                                width="100%",
+                                height="100%",
                             ),
                         ),
                     ),
-                    width="100%",
-                    flex="1",
-                    min_height="0",
                 ),
-                spacing="3",
                 width="100%",
-                height="100%",
-                align="start",
+                flex="1",
+                min_height="0",
             ),
+            spacing="3",
+            width="100%",
+            height="100%",
+            align="start",
         ),
+        download_confirm_modal(),
         border=f"1px solid {BORDER_COLOR}",
         border_radius="12px",
         padding="1rem",
@@ -887,12 +1005,17 @@ def file_preview_panel() -> rx.Component:
         min_height="560px",
         width="100%",
         bg=PANEL_BG,
+        position="relative",
     )
 
 
 def files_panel() -> rx.Component:
     """Main panel: TA-style drag/drop upload on the panel + list/grid/preview."""
     inner = rx.vstack(
+        rx.cond(
+            FilesState.upload_error != "",
+            rx.text(FilesState.upload_error, color="red", size="2"),
+        ),
         # Panel header row.
         rx.vstack(
             rx.hstack(
@@ -927,6 +1050,7 @@ def files_panel() -> rx.Component:
                         active=FilesState.view_mode == "list",
                     ),
                     spacing="2",
+                    class_name="files-view-toggle",
                 ),
                 width="100%",
                 align="center",
@@ -1020,41 +1144,35 @@ def files_panel() -> rx.Component:
             width="100%",
             spacing="1",
         ),
-        # Empty-state message while no folder is expanded.
+        # Empty-state when no folder selected (default on load).
         rx.cond(
             FilesState.expanded_folder_name == "",
-            rx.text(
-                "Open a folder from the left sidebar to view its files.",
-                size="2",
-                color=MUTED_TEXT,
-            ),
+            files_explorer_no_folder_placeholder(),
         ),
         # Main content area: show either cards/list OR full preview.
-        rx.cond(
-            FilesState.expanded_folder_name != "",
             rx.cond(
-                FilesState.has_selected_child_file,
-                file_preview_panel(),
-                rx.box(
-                    rx.cond(
-                        FilesState.view_mode == "grid",
-                        rx.flex(
-                            rx.foreach(
-                                FilesState.visible_folder_children,
-                                lambda child: active_child_file_card(child),
+                FilesState.expanded_folder_name != "",
+                rx.cond(
+                    FilesState.has_selected_child_file,
+                    file_preview_panel(),
+                    rx.box(
+                        rx.cond(
+                            FilesState.view_mode == "grid",
+                            rx.box(
+                                rx.foreach(
+                                    FilesState.visible_folder_children,
+                                    lambda child: active_child_file_card(child),
+                                ),
+                                class_name="files-grid-cards",
+                                width="100%",
                             ),
-                            wrap="wrap",
-                            spacing="3",
-                            width="100%",
-                            align="start",
+                            active_children_table(),
                         ),
-                        active_children_table(),
+                        width="100%",
+                        align_self="start",
                     ),
-                    width="100%",
-                    align_self="start",
                 ),
             ),
-        ),
         spacing="4",
         width="100%",
         min_height="calc(100vh - 130px)",
@@ -1069,6 +1187,7 @@ def files_panel() -> rx.Component:
         rx.box(
             inner,
             upload_progress_overlay(compact=False),
+            panel_drop_confirm_layer(),
             position="relative",
             width="100%",
         ),
@@ -1078,13 +1197,7 @@ def files_panel() -> rx.Component:
         max_files=20,
         accept=FILES_UPLOAD_ACCEPT,
         no_click=True,
-        disabled=FilesState.expanded_folder_name == "",
-        on_drop=FilesState.upload_panel_drop(
-            rx.upload_files(
-                upload_id=FILES_PANEL_UPLOAD_ZONE_ID,
-                on_upload_progress=FilesState.track_upload_progress,
-            )
-        ),
+        on_drop=FilesState.request_panel_drop_confirm,
         drag_active_style={
             "background": "rgba(34, 197, 94, 0.1)",
             "box_shadow": "inset 0 0 0 2px rgba(34, 197, 94, 0.5)",

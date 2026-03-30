@@ -67,15 +67,20 @@ class FilesState(
     files_mobile_view: str = "tree"
 
     files: list[dict[str, str]] = list_files_payload()
-    selected_file_name: str = files[0]["name"] if files else ""
+    selected_file_name: str = ""
     show_new_folder_input: bool = False
     new_folder_name: str = ""
+    # Plain flags (updated in CRUD handlers) — Reflex buttons often miss computed-Var disabled updates.
+    create_folder_btn_enabled: bool = False
     show_rename_input: bool = False
     rename_value: str = ""
+    rename_save_btn_enabled: bool = False
     view_mode: str = "list"
     show_delete_confirm: bool = False
     show_rename_confirm: bool = False
     show_upload_confirm: bool = False
+    show_panel_drop_confirm: bool = False
+    show_download_confirm: bool = False
     search_query: str = ""
     active_type_filter: str = "all"
     sort_mode: str = "modified_desc"
@@ -87,6 +92,8 @@ class FilesState(
     upload_error: str = ""
     upload_zone_id: str = FILES_UPLOAD_ZONE_ID
     excluded_upload_names: list[str] = []
+    # Backend-only stash for panel drop confirm flow.
+    _pending_panel_drop_files: list[rx.UploadFile] = []
 
     # Which folder is currently expanded in the sidebar.
     expanded_folder_name: str = ""
@@ -457,6 +464,24 @@ class FilesState(
 
     def download_selected_file(self):
         return FilesPreviewActionsMixin.download_selected_file(self)
+
+    def request_download_confirm(self) -> None:
+        return FilesPreviewActionsMixin.request_download_confirm(self)
+
+    def cancel_download_confirm(self) -> None:
+        return FilesPreviewActionsMixin.cancel_download_confirm(self)
+
+    def confirm_download(self):
+        return FilesPreviewActionsMixin.confirm_download(self)
+
+    async def request_panel_drop_confirm(self, files: list[rx.UploadFile]):
+        return await FilesUploadActionsMixin.request_panel_drop_confirm(self, files)
+
+    def cancel_panel_drop_confirm(self):
+        return FilesUploadActionsMixin.cancel_panel_drop_confirm(self)
+
+    async def confirm_panel_drop_upload(self):
+        return await FilesUploadActionsMixin.confirm_panel_drop_upload(self)
 
     def open_upload_input(self) -> None:
         return FilesUploadActionsMixin.open_upload_input(self)

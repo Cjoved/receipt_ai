@@ -59,8 +59,23 @@ class FilesPreviewActionsMixin:
         self.selected_child_file_name = ""
         self._clear_preview_state()
 
-    def download_selected_file(self):
-        """Download the currently selected file using a presigned URL."""
+    def request_download_confirm(self) -> None:
+        """Open confirmation before opening the download link."""
+        if not self.expanded_folder_name or not self.selected_child_file_name:
+            self.upload_error = "Select a file to download."
+            return
+        self.show_download_confirm = True
+
+    def cancel_download_confirm(self) -> None:
+        self.show_download_confirm = False
+
+    def confirm_download(self):
+        """Close modal and start download via presigned URL."""
+        self.show_download_confirm = False
+        return self._download_selected_redirect()
+
+    def _download_selected_redirect(self):
+        """Redirect browser to presigned GET for the selected file."""
         if not self.expanded_folder_name or not self.selected_child_file_name:
             self.upload_error = "Select a file to download."
             return
@@ -72,3 +87,7 @@ class FilesPreviewActionsMixin:
             return rx.redirect(url, is_external=True)
         except Exception as e:
             self.upload_error = f"Failed to download file: {e}"
+
+    def download_selected_file(self):
+        """Backward-compatible direct download (no modal)."""
+        return self._download_selected_redirect()
