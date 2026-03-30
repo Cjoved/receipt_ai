@@ -166,7 +166,16 @@ class FilesComputedMixin:
     @rx.var
     # Folder-only list for rendering expandable rows in sidebar.
     def folder_names(self) -> list[str]:
-        return [item["name"] for item in self.files if item.get("file_type", "").lower() == "folder"]
+        names: list[str] = []
+        for item in self.files:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            if str(item.get("file_type", "folder")).lower() == "folder":
+                names.append(name)
+        return names
 
     @rx.var
     # Child file rows for the currently expanded folder.

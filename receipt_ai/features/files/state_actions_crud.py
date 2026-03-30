@@ -8,13 +8,74 @@ from receipt_ai.features.files.validation import (
 class FilesCrudActionsMixin:
     """CRUD and selection actions for files/folders."""
 
+    def _explorer_folder_names(self) -> list[str]:
+        """Folder row names in the sidebar (same rules as FilesComputedMixin.folder_names)."""
+        names: list[str] = []
+        for item in self.files:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            ft = str(item.get("file_type", "folder")).lower()
+            if ft == "folder":
+                names.append(name)
+        return names
+
+    def _sync_create_folder_button(self) -> None:
+        """Keep Create enabled state in sync (plain bool for reliable button disabled binding)."""
+        if not self.show_new_folder_input:
+            self.create_folder_btn_enabled = False
+            return
+        candidate = normalize_item_name(self.new_folder_name)
+        if candidate == "":
+            self.create_folder_btn_enabled = False
+            return
+        if validate_item_name(candidate, kind="folder"):
+            self.create_folder_btn_enabled = False
+            return
+        dup = duplicate_name_error(candidate, set(self._explorer_folder_names()), kind="folder")
+        self.create_folder_btn_enabled = dup is None
+
+    def _sync_rename_save_button(self) -> None:
+        """Keep Save enabled state in sync for inline rename."""
+        if not self.show_rename_input:
+            self.rename_save_btn_enabled = False
+            return
+        candidate = normalize_item_name(self.rename_value)
+        if candidate == "":
+            self.rename_save_btn_enabled = False
+            return
+        kind = "file" if self.selected_child_file_name else "folder"
+        if validate_item_name(candidate, kind=kind):
+            self.rename_save_btn_enabled = False
+            return
+        if self.selected_child_file_name:
+            existing = {
+                child["name"]
+                for child in self.active_folder_children
+                if child.get("name", "").lower() != self.selected_child_file_name.lower()
+            }
+            dup = duplicate_name_error(candidate, existing, kind="file")
+            self.rename_save_btn_enabled = dup is None
+            return
+        if self.expanded_folder_name:
+            existing_folders = {
+                name
+                for name in self._explorer_folder_names()
+                if name.lower() != self.expanded_folder_name.lower()
+            }
+            dup = duplicate_name_error(candidate, existing_folders, kind="folder")
+            self.rename_save_btn_enabled = dup is None
+            return
+        self.rename_save_btn_enabled = False
+
     # Reload list from the service layer (used on page load).
     def load_files(self) -> None:
         """Load files from wasabi and reflect them in the explorer list."""
         try:
             storage = self._get_storage()
             folder_names = storage.list_folders()
-            use_storage_folders = len(folder_names) > 0
             if folder_names:
                 self.files = [
                     {"name": folder, "size": "-", "file_type": "folder", "status": "Ready"}
@@ -34,33 +95,30 @@ class FilesCrudActionsMixin:
                     next_children[folder_name] = []
             self.folder_children = next_children
 
-            self.selected_file_name = self.files[0]["name"] if self.files else ""
-            # Auto-open first folder so users immediately see files.
-            if self.selected_file_name:
-                self.expanded_folder_name = self.selected_file_name
-                # Keep seed children when no Wasabi folders are available.
-                if use_storage_folders:
-                    self._reload_folder_children(self.selected_file_name)
-            else:
-                self.expanded_folder_name = ""
-                self.selected_child_file_name = ""
-                self._clear_preview_state()
+            # Start with no folder expanded — user picks a folder from the Explorer first.
+            self.selected_file_name = ""
+            self.expanded_folder_name = ""
+            self.selected_child_file_name = ""
+            self._clear_preview_state()
         except Exception as e:
             self.upload_error = f"Failed to load files: {e}"
 
     # Show inline input controls for creating a new folder.
     def open_new_folder_input(self) -> None:
         self.show_new_folder_input = True
+        self._sync_create_folder_button()
 
     # Close create-folder form and reset its input value.
     def cancel_new_folder(self) -> None:
         """Close create-folder form without applying changes."""
         self.show_new_folder_input = False
         self.new_folder_name = ""
+        self.create_folder_btn_enabled = False
 
     # Keep new-folder input field synchronized with state.
     def set_new_folder_name(self, value: str) -> None:
         self.new_folder_name = value
+        self._sync_create_folder_button()
 
     # Add a new folder entry to the in-memory file list.
     def create_new_folder(self) -> None:
@@ -92,6 +150,7 @@ class FilesCrudActionsMixin:
             self.folder_children = {**self.folder_children, new_folder_name: []}
             self.show_new_folder_input = False
             self.new_folder_name = ""
+            self.create_folder_btn_enabled = False
             self.upload_error = ""
         except Exception as e:
             self.upload_error = f"Failed to create folder: {e}"
@@ -107,10 +166,12 @@ class FilesCrudActionsMixin:
         else:
             return
         self.show_rename_input = True
+        self._sync_rename_save_button()
 
     # Keep rename input synchronized with state.
     def set_rename_value(self, value: str) -> None:
         self.rename_value = value
+        self._sync_rename_save_button()
 
     # Persist rename change into the selected list item.
     def save_rename(self) -> None:
@@ -180,6 +241,7 @@ class FilesCrudActionsMixin:
                         break
             self.show_rename_input = False
             self.rename_value = ""
+            self.rename_save_btn_enabled = False
             self.show_rename_confirm = False
             self.upload_error = ""
         except Exception as e:
@@ -189,11 +251,13 @@ class FilesCrudActionsMixin:
     def cancel_rename(self) -> None:
         self.show_rename_input = False
         self.rename_value = ""
+        self.rename_save_btn_enabled = False
         self.show_rename_confirm = False
 
     def request_rename_confirm(self) -> None:
         """Open rename confirmation modal after passing frontend validations."""
-        if not self.can_save_rename:
+        self._sync_rename_save_button()
+        if not self.rename_save_btn_enabled:
             return
         self.show_rename_confirm = True
 
@@ -290,6 +354,7 @@ class FilesCrudActionsMixin:
         self.selected_file_name = folder_name
         self.selected_child_file_name = ""
         self._clear_preview_state()
+        self.upload_error = ""
 
         try:
             self._reload_folder_children(folder_name)
