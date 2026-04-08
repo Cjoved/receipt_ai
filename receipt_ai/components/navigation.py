@@ -19,6 +19,7 @@ from receipt_ai.core.theme.tokens import (
     text_primary,
     theme_pair,
 )
+from receipt_ai.features.auth.state import AuthState
 from receipt_ai.features.shell.state import NavState
 
 
@@ -85,7 +86,7 @@ def _account_menu() -> rx.Component:
                         color=accent_muted_fg,
                     ),
                     rx.text(
-                        "Demo user",
+                        AuthState.user_display_name,
                         size="2",
                         weight="medium",
                         color=APP_FOREGROUND,
@@ -101,14 +102,14 @@ def _account_menu() -> rx.Component:
         ),
         rx.dropdown_menu.content(
             rx.box(
-                rx.text("Demo user", weight="bold", size="2", color=text_primary),
-                rx.text("demo@receipt.ai", size="1", color=text_muted),
+                rx.text(AuthState.user_display_name, weight="bold", size="2", color=text_primary),
+                rx.text(AuthState.email, size="1", color=text_muted),
                 padding="12px",
                 border_bottom=f"1px solid {border_default}",
             ),
             rx.dropdown_menu.separator(),
             rx.dropdown_menu.item("Profile"),
-            rx.dropdown_menu.item("Log out"),
+            rx.dropdown_menu.item("Log out", on_click=AuthState.logout),
             side="bottom",
             align="end",
             size="2",
@@ -177,11 +178,11 @@ def top_nav(active_page: str) -> rx.Component:
                                 spacing="2",
                                 align="center",
                             ),
-                            href="/",
+                            href="/files",
                             class_name="nav-brand-link",
                         ),
                         rx.hstack(
-                            nav_button("Files", "/", files_active, icon="folder"),
+                            nav_button("Files", "/files", files_active, icon="folder"),
                             nav_button("Chat", "/chat", chat_active, icon="message-circle"),
                             spacing="2",
                             class_name="nav-desktop-only",
@@ -206,7 +207,7 @@ def top_nav(active_page: str) -> rx.Component:
                     rx.vstack(
                         _mobile_nav_link(
                             label="Files",
-                            href="/",
+                            href="/files",
                             icon="folder",
                             active=files_active,
                         ),
