@@ -4,6 +4,8 @@ from receipt_ai.core.upload_constants import (
     FILES_PANEL_UPLOAD_ZONE_ID,
     FILES_UPLOAD_ZONE_ID,
 )
+from receipt_ai.features.extraction.models import ExtractionRequest
+from receipt_ai.features.extraction.orchestrator import run_upload_extraction
 from receipt_ai.features.files.validation import normalize_item_name, validate_upload_filename
 
 
@@ -146,8 +148,22 @@ class FilesUploadActionsMixin:
                 seen_batch.add(lowered)
 
                 await file.seek(0)
+                file_bytes = await file.read()
+                await file.seek(0)
                 storage.upload_fileobj(target_folder, file.filename, file.file)
                 uploaded_names.append(file.filename)
+
+                extraction_result = await run_upload_extraction(
+                    ExtractionRequest(
+                        filename=file.filename,
+                        content_type=getattr(file, "content_type", None),
+                        file_bytes=file_bytes,
+                        storage_folder=target_folder,
+                    )
+                )
+                if extraction_result.status == "failed":
+                    # Upload remains successful; extraction errors are surfaced as non-blocking notice.
+                    self.upload_error = f"Upload succeeded but extraction failed for '{file.filename}': {extraction_result.error}"
 
             self._reload_folder_children(target_folder)
             if uploaded_names:
