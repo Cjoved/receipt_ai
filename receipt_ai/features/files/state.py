@@ -110,14 +110,8 @@ class FilesState(
     preview_csv_rows: list[list[str]] = []
     preview_error: str = ""
 
-    # Demo children files per folder (local mock for now).
-    folder_children: dict[str, list[dict[str, str]]] = {
-        "My Files": [
-            {"name": "invoice_jan.pdf", "ext": "PDF", "icon": "file-text", "badge": "red"},
-            {"name": "receipt_store.png", "ext": "PNG", "icon": "file-image", "badge": "purple"},
-            {"name": "report.xlsx", "ext": "XLSX", "icon": "file-spreadsheet", "badge": "green"},
-        ],
-    }
+    # Filled from Wasabi when a folder is expanded (see _reload_folder_children / load_files).
+    folder_children: dict[str, list[dict[str, str]]] = {}
 
     @rx.var
     def has_open_folder(self) -> bool:
@@ -457,10 +451,10 @@ class FilesState(
         return FilesPreviewActionsMixin._refresh_preview_url(self)
 
     def select_child_file(self, filename: str) -> None:
-        return FilesPreviewActionsMixin.select_child_file(self, filename)
+        FilesPreviewActionsMixin.select_child_file(self, filename)
 
     def close_preview(self) -> None:
-        return FilesPreviewActionsMixin.close_preview(self)
+        FilesPreviewActionsMixin.close_preview(self)
 
     def download_selected_file(self):
         return FilesPreviewActionsMixin.download_selected_file(self)

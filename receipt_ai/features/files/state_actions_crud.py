@@ -88,12 +88,9 @@ class FilesCrudActionsMixin:
                 ]
                 folder_names = [item["name"] for item in self.files if item.get("file_type", "").lower() == "folder"]
 
-            # Ensure local child cache has keys for fetched folders.
-            next_children = dict(self.folder_children)
-            for folder_name in folder_names:
-                if folder_name not in next_children:
-                    next_children[folder_name] = []
-            self.folder_children = next_children
+            # Reset per-folder file lists so stale demo/cache rows never mix with Wasabi.
+            # Actual objects load when the user expands a folder (_reload_folder_children).
+            self.folder_children = {name: [] for name in folder_names}
 
             # Start with no folder expanded — user picks a folder from the Explorer first.
             self.selected_file_name = ""
