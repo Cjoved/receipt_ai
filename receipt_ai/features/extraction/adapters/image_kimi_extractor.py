@@ -8,6 +8,7 @@ from receipt_ai.features.extraction.config import ExtractionConfig
 from receipt_ai.features.extraction.contracts import Extractor
 from receipt_ai.features.extraction.errors import ExternalAIError
 from receipt_ai.features.extraction.models import ExtractionRequest
+from receipt_ai.features.extraction.validators.image_receipt_validator import is_likely_receipt
 
 
 def _guess_mime(filename: str) -> str:
@@ -50,7 +51,9 @@ class ImageKimiExtractor(Extractor):
                     {
                         "role": "system",
                         "content": (
-                            "You extract receipt text from images. Return clean plain text with key fields when found: "
+                            "You extract text from receipt images only. "
+                            "If the image is not a receipt document, return exactly: NOT_RECEIPT. "
+                            "For valid receipts, return clean plain text and include key fields when found: "
                             "merchant, date, line items, tax, total, payment method."
                         ),
                     },
@@ -67,6 +70,10 @@ class ImageKimiExtractor(Extractor):
             text = (result.choices[0].message.content or "").strip()
             if text == "":
                 raise ExternalAIError("Kimi returned empty output.")
+            if text == "NOT_RECEIPT":
+                raise ExternalAIError("Uploaded image does not look like a receipt.")
+            if self._config.require_receipt_signals and not is_likely_receipt(text):
+                raise ExternalAIError("Extraction output failed receipt validation checks.")
             return text
         except ExternalAIError:
             raise
