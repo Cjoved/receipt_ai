@@ -2,8 +2,15 @@ import asyncio
 import reflex as rx
 from typing import Any
 
+from receipt_ai.features.auth.state import AuthState
 from receipt_ai.features.chat.rag_service import run_rag_reply
-from receipt_ai.features.chat.service import list_chat_payload
+from receipt_ai.features.chat.service import (
+    append_message,
+    create_conversation,
+    list_chat_payload,
+    list_conversation_messages,
+    rename_conversation,
+)
 from receipt_ai.features.files.state import FilesState
 
 # History rail drag: same pattern as Files explorer (rx.call_script + Promise).
@@ -39,7 +46,8 @@ return new Promise((resolve) => {
 class ChatState(rx.State):
     """State container for chat feature."""
 
-    sidebar_threads: list[str] = list_chat_payload()
+    sidebar_threads: list[dict[str, str]] = []
+    active_conversation_id: str = ""
     # Each turn: {"role": "user" | "assistant", "content": str} (assistant uses markdown when needed).
     messages: list[dict[str, str]] = []
     draft_message: str = ""
@@ -79,8 +87,32 @@ class ChatState(rx.State):
                 previews.append(prefix + text)
         return previews
 
-    def load_history(self) -> None:
-        self.sidebar_threads = list_chat_payload()
+    async def load_history(self) -> None:
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            self.sidebar_threads = []
+            self.active_conversation_id = ""
+            self.messages = []
+            return
+        self.sidebar_threads = list_chat_payload(auth.user_id)
+        if not self.sidebar_threads:
+            self.active_conversation_id = ""
+            self.messages = []
+            return
+        if not self.active_conversation_id:
+            self.active_conversation_id = str(self.sidebar_threads[0].get("id", ""))
+        await self._load_active_conversation_messages()
+
+    async def select_conversation(self, conversation_id: str) -> None:
+        self.active_conversation_id = conversation_id
+        await self._load_active_conversation_messages()
+
+    async def _load_active_conversation_messages(self) -> None:
+        convo_id = (self.active_conversation_id or "").strip()
+        if not convo_id:
+            self.messages = []
+            return
+        self.messages = list_conversation_messages(convo_id)
 
     def set_draft(self, value: str) -> None:
         self.draft_message = value
@@ -91,6 +123,20 @@ class ChatState(rx.State):
             return
         clipped = message[:2000]
         self.rag_busy = True
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            self.rag_busy = False
+            self.messages = [
+                *self.messages,
+                {"role": "assistant", "content": "Please sign in first."},
+            ]
+            return
+
+        if not self.active_conversation_id:
+            self.active_conversation_id = create_conversation(auth.user_id, title=clipped[:80])
+            self.sidebar_threads = list_chat_payload(auth.user_id)
+
+        append_message(self.active_conversation_id, role="user", content=clipped)
         self.messages = [
             *self.messages,
             {"role": "user", "content": clipped},
@@ -110,6 +156,10 @@ class ChatState(rx.State):
                 folder_storage_key=folder_key,
                 file_key_exact=file_exact,
             )
+            append_message(self.active_conversation_id, role="assistant", content=reply)
+            if len(self.messages) <= 2:
+                rename_conversation(self.active_conversation_id, title=clipped[:80])
+                self.sidebar_threads = list_chat_payload(auth.user_id)
             self.messages = [
                 *self.messages,
                 {"role": "assistant", "content": reply},
@@ -127,6 +177,7 @@ class ChatState(rx.State):
         self.show_new_chat_confirm = False
         self.messages = []
         self.draft_message = ""
+        self.active_conversation_id = ""
 
     def new_chat(self) -> None:
         """Clear thread without confirmation (internal / legacy)."""

@@ -32,6 +32,15 @@ uv run reflex run
 
 Then open the URL Reflex prints in the terminal (usually [http://localhost:3000](http://localhost:3000)).
 
+## AI Docs
+
+For RAG/prompt/reference docs, see:
+
+- `docs/PROMPTS.md`
+- `docs/RAG_SETUP.md`
+- `docs/RECEIPT_VALIDATION.md`
+- `docs/IMPLEMENTATION_ROADMAP.md`
+
 ## Commands (Reflex 0.8+)
 
 | Task | Command |

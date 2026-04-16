@@ -22,6 +22,15 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  adminer:
+    image: adminer:latest
+    container_name: receipt_ai_adminer
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+
 volumes:
   postgres_data:
   qdrant_data:

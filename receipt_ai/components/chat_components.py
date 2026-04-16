@@ -125,14 +125,24 @@ def chat_history() -> rx.Component:
             rx.vstack(
                 rx.foreach(
                     ChatState.sidebar_threads,
-                    lambda title: rx.box(
-                        rx.text(title, size=TEXT_SIZE_MD, color=SECONDARY_TEXT),
+                    lambda thread: rx.box(
+                        rx.text(thread["title"], size=TEXT_SIZE_MD, color=SECONDARY_TEXT),
                         padding="0.5rem 0.65rem",
                         border_radius="12px",
                         width="100%",
                         cursor="pointer",
-                        border="1px solid transparent",
+                        border=rx.cond(
+                            thread["id"] == ChatState.active_conversation_id,
+                            f"1px solid {border_accent}",
+                            "1px solid transparent",
+                        ),
+                        bg=rx.cond(
+                            thread["id"] == ChatState.active_conversation_id,
+                            accent_soft_bg,
+                            "transparent",
+                        ),
                         _hover={"bg": accent_soft_bg, "border_color": border_accent},
+                        on_click=ChatState.select_conversation(thread["id"]),
                     ),
                 ),
                 spacing="1",
