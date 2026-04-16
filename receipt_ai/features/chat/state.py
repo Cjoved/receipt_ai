@@ -1,7 +1,10 @@
+import asyncio
 import reflex as rx
 from typing import Any
 
+from receipt_ai.features.chat.rag_service import run_rag_reply
 from receipt_ai.features.chat.service import list_chat_payload
+from receipt_ai.features.files.state import FilesState
 
 # History rail drag: same pattern as Files explorer (rx.call_script + Promise).
 _CHAT_DIVIDER_DRAG_JS = """
@@ -40,6 +43,7 @@ class ChatState(rx.State):
     # Each turn: {"role": "user" | "assistant", "content": str} (assistant uses markdown when needed).
     messages: list[dict[str, str]] = []
     draft_message: str = ""
+    rag_busy: bool = False
 
     chat_sidebar_width_pct: int = 22
     chat_mobile_view: str = "history"
@@ -52,6 +56,10 @@ class ChatState(rx.State):
     @rx.var
     def has_messages(self) -> bool:
         return len(self.messages) > 0
+
+    @rx.var
+    def can_send(self) -> bool:
+        return (self.draft_message or "").strip() != "" and not self.rag_busy
 
     @rx.var
     def recent_messages(self) -> list[str]:
@@ -77,22 +85,37 @@ class ChatState(rx.State):
     def set_draft(self, value: str) -> None:
         self.draft_message = value
 
-    def send_draft(self) -> None:
+    async def send_draft(self) -> None:
         message = self.draft_message.strip()
-        if not message:
+        if not message or self.rag_busy:
             return
         clipped = message[:2000]
-        assistant_reply = (
-            "Thanks — **Receipt AI** will answer here once the chat API is connected.\n\n"
-            "Your message:\n\n> "
-            + (clipped[:280] + ("…" if len(clipped) > 280 else ""))
-        )
+        self.rag_busy = True
         self.messages = [
             *self.messages,
             {"role": "user", "content": clipped},
-            {"role": "assistant", "content": assistant_reply},
         ]
         self.draft_message = ""
+        try:
+            files = await self.get_state(FilesState)
+            folder_key = None
+            file_exact = None
+            if files.expanded_folder_name:
+                folder_key = files._resolve_storage_folder_name(files.expanded_folder_name)
+                if files.selected_child_file_name:
+                    file_exact = f"{folder_key}/{files.selected_child_file_name}"
+            reply = await asyncio.to_thread(
+                run_rag_reply,
+                clipped,
+                folder_storage_key=folder_key,
+                file_key_exact=file_exact,
+            )
+            self.messages = [
+                *self.messages,
+                {"role": "assistant", "content": reply},
+            ]
+        finally:
+            self.rag_busy = False
 
     def open_new_chat_confirm(self) -> None:
         self.show_new_chat_confirm = True

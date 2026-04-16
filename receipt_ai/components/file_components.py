@@ -699,6 +699,24 @@ def active_child_file_card(child: dict[str, str]) -> rx.Component:
                     variant="soft",
                     size="1",
                 ),
+                rx.badge(
+                    child.get("index_status", "—"),
+                    color_scheme=rx.cond(
+                        child.get("index_status", "") == "completed",
+                        "green",
+                        rx.cond(
+                            child.get("index_status", "") == "processing",
+                            "yellow",
+                            rx.cond(
+                                child.get("index_status", "") == "failed",
+                                "red",
+                                "gray",
+                            ),
+                        ),
+                    ),
+                    variant="soft",
+                    size="1",
+                ),
                 spacing="2",
                 align="center",
                 width="100%",
@@ -759,6 +777,27 @@ def active_child_file_row(child: dict[str, str]) -> rx.Component:
             style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap"},
         ),
         rx.el.td(
+            rx.badge(
+                child.get("index_status", "—"),
+                color_scheme=rx.cond(
+                    child.get("index_status", "") == "completed",
+                    "green",
+                    rx.cond(
+                        child.get("index_status", "") == "processing",
+                        "yellow",
+                        rx.cond(
+                            child.get("index_status", "") == "failed",
+                            "red",
+                            "gray",
+                        ),
+                    ),
+                ),
+                variant="soft",
+                size="1",
+            ),
+            style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap"},
+        ),
+        rx.el.td(
             rx.button(
                 rx.icon("trash", size=ICON_SIZE_XS),
                 variant="ghost",
@@ -795,6 +834,7 @@ def active_children_table() -> rx.Component:
                     rx.el.th("TYPE", style=TABLE_HEADER_BASE_STYLE),
                     rx.el.th("SIZE", style=TABLE_HEADER_BASE_STYLE),
                     rx.el.th("STATUS", style=TABLE_HEADER_BASE_STYLE),
+                    rx.el.th("INDEX", style=TABLE_HEADER_BASE_STYLE),
                     rx.el.th("ACTION", style=action_header_style),
                 )
             ),

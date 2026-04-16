@@ -200,6 +200,7 @@ class FilesComputedMixin:
                             "modified_at": child.get("modified_at", "-"),
                             "modified_epoch": child.get("modified_epoch", "0"),
                             "status": child.get("status", "Completed"),
+                            "index_status": str(child.get("index_status", "—")),
                         }
                     )
             elif isinstance(child, str):

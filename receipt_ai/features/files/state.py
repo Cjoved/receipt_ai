@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Any
 
 from receipt_ai.core.upload_constants import FILES_UPLOAD_ZONE_ID
+from receipt_ai.features.extraction.config import ExtractionConfig
+from receipt_ai.features.extraction.indexing.chunk_repository import ChunkRepository
 from receipt_ai.features.files.file_meta import child_file_meta
 from receipt_ai.features.files.service import list_files_payload
 from receipt_ai.features.files.state_actions_crud import FilesCrudActionsMixin
@@ -145,6 +147,7 @@ class FilesState(
                     "modified_at": str(child.get("modified_at", "-")),
                     "modified_epoch": str(child.get("modified_epoch", "0")),
                     "status": str(child.get("status", "Completed")),
+                    "index_status": str(child.get("index_status", "—")),
                 }
             )
         return normalized
@@ -293,15 +296,20 @@ class FilesState(
         storage = self._get_storage()
         storage_folder = self._resolve_storage_folder_name(folder_name)
         file_objects = storage.list_folder_file_objects(storage_folder)
-        hydrated_children = [
-            self._hydrate_child(
-                str(obj.get("name", "")),
+        index_repo = ChunkRepository(ExtractionConfig.from_env())
+        hydrated_children: list[dict[str, str]] = []
+        for obj in file_objects:
+            name = str(obj.get("name", "")).strip()
+            if not name:
+                continue
+            row = self._hydrate_child(
+                name,
                 int(obj.get("size_bytes", 0) or 0),
                 obj.get("last_modified"),
             )
-            for obj in file_objects
-            if obj.get("name")
-        ]
+            file_key = f"{storage_folder}/{name}"
+            row["index_status"] = index_repo.get_status(file_key)
+            hydrated_children.append(row)
         # Reassign dictionary so Reflex reliably detects state change.
         self.folder_children = {**self.folder_children, folder_name: hydrated_children}
 

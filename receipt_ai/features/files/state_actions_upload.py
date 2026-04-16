@@ -4,6 +4,8 @@ from receipt_ai.core.upload_constants import (
     FILES_PANEL_UPLOAD_ZONE_ID,
     FILES_UPLOAD_ZONE_ID,
 )
+from receipt_ai.features.extraction.indexing import IndexingRequest
+from receipt_ai.features.extraction.jobs import enqueue_uploaded_document
 from receipt_ai.features.extraction.models import ExtractionRequest
 from receipt_ai.features.extraction.orchestrator import run_upload_extraction
 from receipt_ai.features.files.validation import normalize_item_name, validate_upload_filename
@@ -164,6 +166,17 @@ class FilesUploadActionsMixin:
                 if extraction_result.status == "failed":
                     # Upload remains successful; extraction errors are surfaced as non-blocking notice.
                     self.upload_error = f"Upload succeeded but extraction failed for '{file.filename}': {extraction_result.error}"
+                elif extraction_result.text:
+                    file_key = f"{target_folder}/{normalized_name}"
+                    enqueue_uploaded_document(
+                        IndexingRequest(
+                            file_key=file_key,
+                            folder=target_folder,
+                            filename=file.filename,
+                            extracted_text=extraction_result.text,
+                            doc_type=(normalized_name.rsplit(".", 1)[-1].lower() if "." in normalized_name else "file"),
+                        )
+                    )
 
             self._reload_folder_children(target_folder)
             if uploaded_names:
