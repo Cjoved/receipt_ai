@@ -1,4 +1,5 @@
 import reflex as rx
+from reflex_motion import motion
 from reflex.components.core.upload import upload_file
 from reflex.event import EventVar
 
@@ -46,6 +47,27 @@ TABLE_HEADER_BASE_STYLE = {
     "background": _mode("#f1f5fb", "#0c1a33"),
     "borderBottom": f"1px solid {_mode('#d8e3f3', '#1a2e52')}",
 }
+
+def upload_modal_primary_cta() -> rx.Component:
+    """Primary Upload in the modal — static label; counts live in `upload_queue_summary_label` under the row."""
+    return rx.button(
+        rx.hstack(
+            rx.cond(
+                FilesState.is_uploading,
+                rx.spinner(size="2"),
+                rx.fragment(),
+            ),
+            rx.text("Upload", as_="span", size="2", weight="medium"),
+            spacing="2",
+            align="center",
+        ),
+        on_click=FilesState.request_upload_confirm,
+        disabled=FilesState.is_uploading,
+        size="2",
+        variant="solid",
+        color_scheme="green",
+        min_width="168px",
+    )
 
 
 def delete_confirm_modal() -> rx.Component:
@@ -104,22 +126,55 @@ def rename_confirm_modal() -> rx.Component:
 
 
 def upload_confirm_modal() -> rx.Component:
-    """Confirmation modal before uploading staged files (toolbar upload)."""
-    return confirm_modal(
-        open_state=FilesState.show_upload_confirm,
-        title="Upload selected files?",
-        body=rx.text(
-            "Proceed with uploading staged files to the currently opened folder?",
-            color=rx.color("gray", 11),
+    """Inline confirm layer so UploadFilesContext is preserved for rx.upload_files."""
+    return rx.cond(
+        FilesState.show_upload_confirm,
+        rx.box(
+            rx.box(
+                rx.vstack(
+                    rx.heading("Upload selected files?", size="4", color=text_primary),
+                    rx.text(
+                        "Proceed with uploading staged files to the currently opened folder?",
+                        size="2",
+                        color=rx.color("gray", 11),
+                    ),
+                    rx.hstack(
+                        rx.button(
+                            "Cancel",
+                            variant="outline",
+                            on_click=FilesState.cancel_upload_confirm,
+                            size="2",
+                        ),
+                        rx.button(
+                            "Upload",
+                            color_scheme="green",
+                            on_click=FilesState.confirm_upload_from_queue,
+                            size="2",
+                        ),
+                        justify="end",
+                        width="100%",
+                        spacing="2",
+                    ),
+                    spacing="3",
+                    width="100%",
+                ),
+                width="min(520px, 92vw)",
+                bg=PANEL_BG,
+                border=f"1px solid {BORDER_COLOR}",
+                border_radius="14px",
+                padding="1rem",
+                box_shadow="0 24px 80px rgba(2, 6, 23, 0.45)",
+            ),
+            position="fixed",
+            inset="0",
+            z_index="10002",
+            background="rgba(2, 6, 23, 0.72)",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            padding="1rem",
         ),
-        confirm_label="Upload",
-        on_confirm=FilesState.upload_files(
-            rx.upload_files(
-                upload_id=UPLOAD_ZONE_ID,
-                on_upload_progress=FilesState.track_upload_progress,
-            )
-        ),
-        on_cancel=FilesState.cancel_upload_confirm,
+        rx.fragment(),
     )
 
 
@@ -244,37 +299,133 @@ def download_confirm_modal() -> rx.Component:
 
 
 def upload_progress_overlay(*, compact: bool = False) -> rx.Component:
-    """Spinner + bar while bytes stream to the server (Technical AI upload card)."""
+    """Circular receipt-style upload progress overlay with stage text."""
     radius = "14px" if compact else "12px"
+    ring_size = "140px" if compact else "156px"
+    ring_circumference = 345.6
     return rx.cond(
         FilesState.is_uploading,
         rx.box(
             rx.box(
                 rx.vstack(
-                    rx.hstack(
-                        rx.spinner(size="3"),
-                        rx.icon("upload", size=ICON_SIZE_SM, color=accent_muted_fg),
-                        spacing="3",
-                        justify="center",
-                        align="center",
+                    motion(
+                        rx.box(
+                            rx.el.svg(
+                                rx.el.circle(
+                                    cx="64",
+                                    cy="64",
+                                    r="55",
+                                    fill="none",
+                                    stroke=_mode("#d9e6f7", "#1b2d4b"),
+                                    stroke_width="10",
+                                ),
+                                rx.el.circle(
+                                    cx="64",
+                                    cy="64",
+                                    r="55",
+                                    fill="none",
+                                    stroke="#22c55e",
+                                    stroke_width="10",
+                                    stroke_linecap="round",
+                                    stroke_dasharray=str(ring_circumference),
+                                    stroke_dashoffset=ring_circumference
+                                    - (FilesState.upload_progress_pct * (ring_circumference / 100)),
+                                    style={
+                                        "transition": "stroke-dashoffset 220ms linear",
+                                        "transform": "rotate(-90deg)",
+                                        "transformOrigin": "50% 50%",
+                                        "filter": "drop-shadow(0 0 6px rgba(34, 197, 94, 0.45))",
+                                    },
+                                ),
+                                viewBox="0 0 128 128",
+                                width=ring_size,
+                                height=ring_size,
+                                style={"position": "relative", "zIndex": "1"},
+                            ),
+                            rx.box(
+                                rx.vstack(
+                                    rx.icon("file-text", size=18, color="#22c55e"),
+                                    rx.box(
+                                        rx.box(
+                                            width="70%",
+                                            height="2px",
+                                            bg=_mode("#9fb6d7", "#3f5f8c"),
+                                            border_radius="999px",
+                                        ),
+                                        rx.box(
+                                            width="58%",
+                                            height="2px",
+                                            bg=_mode("#9fb6d7", "#3f5f8c"),
+                                            border_radius="999px",
+                                        ),
+                                        rx.box(
+                                            width="64%",
+                                            height="2px",
+                                            bg=_mode("#9fb6d7", "#3f5f8c"),
+                                            border_radius="999px",
+                                        ),
+                                        width="78%",
+                                        display="flex",
+                                        flex_direction="column",
+                                        gap="4px",
+                                    ),
+                                    spacing="2",
+                                    align="center",
+                                ),
+                                width="74px",
+                                height="74px",
+                                border_radius="14px",
+                                border=f"1px solid {_mode('#d0ddf0', '#2a4269')}",
+                                bg=_mode("#f8fbff", "#0c1a31"),
+                                box_shadow="0 8px 24px rgba(2, 6, 23, 0.32)",
+                                position="absolute",
+                                top="50%",
+                                left="50%",
+                                transform="translate(-50%, -50%)",
+                                z_index="2",
+                                display="flex",
+                                align_items="center",
+                                justify_content="center",
+                            ),
+                            position="relative",
+                            width=ring_size,
+                            height=ring_size,
+                        ),
+                        animate={"scale": 1.0},
+                        transition={
+                            "duration": 0.2,
+                            "ease": "easeInOut",
+                        },
                     ),
                     rx.text(
-                        rx.cond(
-                            FilesState.upload_progress_pct >= 100,
-                            "Processing…",
-                            "Uploading…",
-                        ),
+                        FilesState.upload_progress_label,
+                        size="4",
+                        weight="bold",
+                        color="#22c55e",
+                    ),
+                    rx.text(
+                        FilesState.upload_stage_title,
                         size="2",
                         weight="bold",
                         color=text_primary,
                     ),
-                    rx.progress(
-                        value=FilesState.upload_progress_pct,
-                        max=100,
-                        width="100%",
+                    rx.text(
+                        FilesState.upload_stage_detail,
+                        size="1",
+                        color=MUTED_TEXT,
+                        text_align="center",
+                    ),
+                    rx.badge(
+                        FilesState.upload_activity_log,
+                        size="1",
+                        variant="soft",
                         color_scheme="green",
                     ),
-                    rx.text(FilesState.upload_progress_label, size="1", color=MUTED_TEXT),
+                    rx.hstack(
+                        rx.text(FilesState.upload_counter_label, size="1", color=MUTED_TEXT),
+                        spacing="2",
+                        align="center",
+                    ),
                     spacing="3",
                     align="center",
                     width="100%",
@@ -334,10 +485,11 @@ def upload_overlay() -> rx.Component:
                     max_files=5,
                     accept=FILES_UPLOAD_ACCEPT,
                     width="100%",
+                    on_drop=FilesState.cache_upload_previews,
                 ),
                 rx.vstack(
                     rx.hstack(
-                        rx.text("Queue", size=TEXT_SIZE_SM, color=rx.color("gray", 11), weight="medium"),
+                        rx.text("Queued Files", size=TEXT_SIZE_SM, color=rx.color("gray", 11), weight="medium"),
                         rx.spacer(),
                         rx.button(
                             "Clear all",
@@ -348,70 +500,236 @@ def upload_overlay() -> rx.Component:
                         width="100%",
                         align="center",
                     ),
-                    rx.foreach(
-                        rx.selected_files(UPLOAD_ZONE_ID),
-                        lambda filename: rx.hstack(
-                            rx.text(
-                                filename,
-                                size=TEXT_SIZE_SM,
-                                color=rx.cond(
-                                    FilesState.excluded_upload_names.contains(filename),
-                                    rx.color("gray", 10),
-                                    rx.color("gray", 12),
-                                ),
-                                text_decoration=rx.cond(
-                                    FilesState.excluded_upload_names.contains(filename),
-                                    "line-through",
-                                    "none",
+                    rx.box(
+                        rx.foreach(
+                            FilesState.upload_queue_previews,
+                            lambda filename: rx.cond(
+                                FilesState.excluded_upload_names.contains(filename["name"]),
+                                rx.fragment(),
+                                rx.box(
+                                    rx.box(
+                                        rx.cond(
+                                            filename["is_image"] == "1",
+                                            rx.cond(
+                                                filename["preview_url"] != "",
+                                                rx.image(
+                                                    src=filename["preview_url"],
+                                                    width="100%",
+                                                    height="160px",
+                                                    object_fit="cover",
+                                                    border_radius="12px",
+                                                    cursor="pointer",
+                                                    on_click=FilesState.open_queued_image_preview(filename["name"]),
+                                                    style={"transition": "transform 160ms ease"},
+                                                    _hover={"transform": "scale(1.02)"},
+                                                ),
+                                                rx.box(
+                                                    rx.vstack(
+                                                        rx.icon("image-off", size=20, color=rx.color("gray", 9)),
+                                                        rx.text(
+                                                            "Preview unavailable",
+                                                            size="1",
+                                                            color=rx.color("gray", 10),
+                                                        ),
+                                                        spacing="1",
+                                                        align="center",
+                                                    ),
+                                                    width="100%",
+                                                    height="160px",
+                                                    border_radius="12px",
+                                                    border=f"1px dashed {rx.color('gray', 6)}",
+                                                    bg=rx.color("gray", 2),
+                                                    display="flex",
+                                                    align_items="center",
+                                                    justify_content="center",
+                                                ),
+                                            ),
+                                            rx.box(
+                                                rx.icon("file-text", size=22, color=accent_muted_fg),
+                                                width="100%",
+                                                height="160px",
+                                                border_radius="12px",
+                                                border=f"1px solid {BORDER_COLOR}",
+                                                bg=rx.color("gray", 2),
+                                                display="flex",
+                                                align_items="center",
+                                                justify_content="center",
+                                            ),
+                                        ),
+                                        rx.button(
+                                            rx.icon("x", size=14),
+                                            size="1",
+                                            color_scheme="red",
+                                            variant="solid",
+                                            on_click=FilesState.exclude_upload_file(filename["name"]),
+                                            title=f"Remove {filename['name']} from queue",
+                                            aria_label=f"Remove {filename['name']} from queue",
+                                            position="absolute",
+                                            top="0.4rem",
+                                            right="0.4rem",
+                                            z_index="3",
+                                            border_radius="9999px",
+                                            min_width="32px",
+                                            min_height="32px",
+                                        ),
+                                        position="relative",
+                                        width="100%",
+                                    ),
+                                    rx.text(
+                                        filename["name"],
+                                        size="1",
+                                        color=rx.color("gray", 12),
+                                        max_width="100%",
+                                        style={
+                                            "display": "-webkit-box",
+                                            "-webkitLineClamp": "2",
+                                            "-webkitBoxOrient": "vertical",
+                                            "overflow": "hidden",
+                                            "lineHeight": "1.2",
+                                            "minHeight": "2.4em",
+                                        },
+                                    ),
+                                    rx.text(
+                                        rx.cond(filename["is_image"] == "1", "Image • Queued", "File • Queued"),
+                                        size="1",
+                                        color=rx.color("gray", 10),
+                                    ),
+                                    width="100%",
+                                    padding="0.35rem",
+                                    border=f"1px solid {BORDER_COLOR}",
+                                    border_radius="12px",
+                                    bg=rx.color("gray", 1),
                                 ),
                             ),
-                            rx.spacer(),
-                            rx.cond(
-                                FilesState.excluded_upload_names.contains(filename),
+                        ),
+                        width="100%",
+                        display="grid",
+                        grid_template_columns="repeat(auto-fill, minmax(180px, 1fr))",
+                        gap="0.55rem",
+                    ),
+                    rx.cond(
+                        FilesState.excluded_upload_names != [],
+                        rx.vstack(
+                            rx.hstack(
+                                rx.text("Removed", size="1", color=rx.color("gray", 10), weight="medium"),
+                                rx.spacer(),
                                 rx.button(
-                                    "Undo",
+                                    "Undo all",
                                     size="1",
                                     variant="ghost",
-                                    on_click=FilesState.include_upload_file(filename),
+                                    on_click=FilesState.clear_removed_upload_files,
                                 ),
-                                rx.button(
-                                    "Skip",
-                                    size="1",
-                                    variant="ghost",
-                                    color_scheme="orange",
-                                    on_click=FilesState.exclude_upload_file(filename),
+                                width="100%",
+                                align="center",
+                            ),
+                            rx.foreach(
+                                FilesState.excluded_upload_names,
+                                lambda filename: rx.hstack(
+                                    rx.text(filename, size="1", color=rx.color("gray", 10), max_width="280px"),
+                                    rx.spacer(),
+                                    rx.button(
+                                        "Undo",
+                                        size="1",
+                                        variant="ghost",
+                                        on_click=FilesState.include_upload_file(filename),
+                                    ),
+                                    width="100%",
+                                    align="center",
                                 ),
                             ),
                             width="100%",
-                            align="center",
-                            padding_y="0.15rem",
+                            spacing="1",
+                        ),
+                    ),
+                    rx.cond(
+                        FilesState.upload_queue_previews == [],
+                        rx.vstack(
+                            rx.foreach(
+                                rx.selected_files(UPLOAD_ZONE_ID),
+                                lambda fallback_name: rx.text(
+                                    fallback_name,
+                                    size="1",
+                                    color=rx.color("gray", 11),
+                                ),
+                            ),
+                            rx.text(
+                                "Preview loading... kapag image ito, lalabas dito ang thumbnail.",
+                                size="1",
+                                color=rx.color("gray", 10),
+                            ),
+                            width="100%",
+                            spacing="1",
                         ),
                     ),
                     width="100%",
                     spacing="1",
-                    max_height="160px",
+                    max_height="360px",
                     overflow_y="auto",
                     border=f"1px solid {BORDER_COLOR}",
                     border_radius="10px",
                     padding="0.5rem",
                     bg=rx.color("gray", 1),
                 ),
-                rx.hstack(
-                    rx.button(
-                        "Upload",
-                        on_click=FilesState.request_upload_confirm,
-                        loading=FilesState.is_uploading,
-                        disabled=FilesState.is_uploading,
-                        size="2",
+                rx.cond(
+                    FilesState.show_queued_preview,
+                    rx.box(
+                        rx.box(
+                            rx.hstack(
+                                rx.text(FilesState.queued_preview_name, weight="bold", color=text_primary, size="2"),
+                                rx.spacer(),
+                                rx.button(
+                                    rx.icon("x", size=16),
+                                    size="1",
+                                    variant="soft",
+                                    on_click=FilesState.close_queued_image_preview,
+                                ),
+                                width="100%",
+                                align="center",
+                            ),
+                            rx.image(
+                                src=FilesState.queued_preview_url,
+                                width="min(80vw, 900px)",
+                                max_height="80vh",
+                                object_fit="contain",
+                                border_radius="12px",
+                                border=f"1px solid {BORDER_COLOR}",
+                                bg=rx.color("gray", 1),
+                            ),
+                            spacing="2",
+                            width="min(86vw, 940px)",
+                        ),
+                        position="fixed",
+                        inset="0",
+                        z_index="10001",
+                        background="rgba(2, 6, 23, 0.80)",
+                        display="flex",
+                        align_items="center",
+                        justify_content="center",
+                        padding="1rem",
                     ),
-                    rx.button(
-                        "Cancel",
-                        variant="outline",
-                        on_click=FilesState.cancel_upload,
-                        size="2",
+                ),
+                rx.vstack(
+                    rx.hstack(
+                        upload_modal_primary_cta(),
+                        rx.button(
+                            "Cancel",
+                            variant="outline",
+                            on_click=FilesState.cancel_upload,
+                            size="2",
+                        ),
+                        justify="end",
+                        width="100%",
                     ),
-                    justify="end",
+                    rx.text(
+                        FilesState.upload_queue_summary_label,
+                        size="1",
+                        color=MUTED_TEXT,
+                        width="100%",
+                        text_align="end",
+                    ),
+                    spacing="1",
                     width="100%",
+                    align="end",
                 ),
                 rx.text(
                     "Tip: Select or drag files first, review the queue, then click Upload.",

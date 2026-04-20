@@ -1,3 +1,5 @@
+import reflex as rx
+
 from receipt_ai.features.files.validation import (
     duplicate_name_error,
     normalize_item_name,
@@ -149,8 +151,10 @@ class FilesCrudActionsMixin:
             self.new_folder_name = ""
             self.create_folder_btn_enabled = False
             self.upload_error = ""
+            return rx.toast.success(f"Folder created: {new_folder_name}")
         except Exception as e:
             self.upload_error = f"Failed to create folder: {e}"
+            return rx.toast.error(f"Failed to create folder: {e}")
 
     # Open rename form and prefill with selected file name or folder name.
     def open_rename_input(self) -> None:
@@ -177,6 +181,7 @@ class FilesCrudActionsMixin:
 
         try:
             storage = self._get_storage()
+            toast_message = ""
             # Rename a single file inside the expanded folder.
             if self.selected_child_file_name and self.expanded_folder_name:
                 base_error = validate_item_name(new_name, kind="file")
@@ -204,6 +209,7 @@ class FilesCrudActionsMixin:
                 self.selected_child_file_name = new_name
                 self._reload_folder_children(folder)
                 self._refresh_preview_url()
+                toast_message = f"File renamed to: {new_name}"
             else:
                 # Rename whole folder prefix recursively in Wasabi.
                 old_name = self.expanded_folder_name
@@ -235,14 +241,18 @@ class FilesCrudActionsMixin:
                             self.folder_children = {**self.folder_children, new_name: moved_children}
                         if self.expanded_folder_name == old_name:
                             self.expanded_folder_name = new_name
+                        toast_message = f"Folder renamed to: {new_name}"
                         break
             self.show_rename_input = False
             self.rename_value = ""
             self.rename_save_btn_enabled = False
             self.show_rename_confirm = False
             self.upload_error = ""
+            if toast_message:
+                return rx.toast.success(toast_message)
         except Exception as e:
             self.upload_error = f"Failed to rename: {e}"
+            return rx.toast.error(f"Failed to rename: {e}")
 
     # Close rename form without applying changes.
     def cancel_rename(self) -> None:
@@ -279,7 +289,7 @@ class FilesCrudActionsMixin:
                 self._reload_folder_children(folder)
                 self._clear_preview_state()
                 self.upload_error = ""
-                return
+                return rx.toast.success(f"Deleted file: {fname}")
 
             target_name = self.selected_file_name
             if not target_name:
@@ -300,8 +310,10 @@ class FilesCrudActionsMixin:
             self.selected_child_file_name = ""
             self._clear_preview_state()
             self.upload_error = ""
+            return rx.toast.success(f"Deleted folder: {target_name}")
         except Exception as e:
             self.upload_error = f"Failed to delete: {e}"
+            return rx.toast.error(f"Failed to delete: {e}")
 
     def request_delete_confirm(self) -> None:
         """Open delete confirmation modal for selected file/folder."""
@@ -320,8 +332,9 @@ class FilesCrudActionsMixin:
 
     def confirm_delete(self) -> None:
         """Confirm destructive delete action."""
-        self.delete_file()
+        result = self.delete_file()
         self.show_delete_confirm = False
+        return result
 
     def delete_child_file(self, filename: str) -> None:
         """Delete one specific child file from current folder (row action)."""
@@ -335,8 +348,10 @@ class FilesCrudActionsMixin:
             if self.selected_child_file_name == filename:
                 self.close_preview()
             self._reload_folder_children(folder)
+            return rx.toast.success(f"Deleted file: {filename}")
         except Exception as e:
             self.upload_error = f"Failed to delete file: {e}"
+            return rx.toast.error(f"Failed to delete file: {e}")
 
     # Toggle the expansion state of a folder.
     def toggle_folder(self, folder_name: str) -> None:

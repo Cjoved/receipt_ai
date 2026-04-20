@@ -91,12 +91,17 @@ class FilesState(
     show_drop_overlay: bool = False
     is_uploading: bool = False
     upload_progress_pct: int = 0
+    upload_stage: str = ""
+    upload_stage_detail: str = ""
+    upload_total_files: int = 0
+    upload_completed_files: int = 0
     upload_error: str = ""
     upload_zone_id: str = FILES_UPLOAD_ZONE_ID
     excluded_upload_names: list[str] = []
-    # Backend-only stash for panel drop confirm flow.
-    _pending_panel_drop_files: list[rx.UploadFile] = []
-
+    upload_queue_previews: list[dict[str, str]] = []
+    queued_preview_name: str = ""
+    queued_preview_url: str = ""
+    show_queued_preview: bool = False
     # Which folder is currently expanded in the sidebar.
     expanded_folder_name: str = ""
     # Selected file inside the expanded folder (empty = toolbar targets the folder).
@@ -497,11 +502,30 @@ class FilesState(
     def cancel_upload_confirm(self) -> None:
         return FilesUploadActionsMixin.cancel_upload_confirm(self)
 
+    def confirm_upload_from_queue(self):
+        return FilesUploadActionsMixin.confirm_upload_from_queue(self)
+
+    async def run_confirmed_queue_upload(self):
+        async for event in FilesUploadActionsMixin.run_confirmed_queue_upload(self):
+            yield event
+
     def exclude_upload_file(self, filename: str) -> None:
         return FilesUploadActionsMixin.exclude_upload_file(self, filename)
 
     def include_upload_file(self, filename: str) -> None:
         return FilesUploadActionsMixin.include_upload_file(self, filename)
+
+    def clear_removed_upload_files(self) -> None:
+        return FilesUploadActionsMixin.clear_removed_upload_files(self)
+
+    def open_queued_image_preview(self, filename: str) -> None:
+        return FilesUploadActionsMixin.open_queued_image_preview(self, filename)
+
+    def close_queued_image_preview(self) -> None:
+        return FilesUploadActionsMixin.close_queued_image_preview(self)
+
+    async def cache_upload_previews(self, files: list[rx.UploadFile]):
+        return await FilesUploadActionsMixin.cache_upload_previews(self, files)
 
     def clear_upload_selection(self):
         return FilesUploadActionsMixin.clear_upload_selection(self)

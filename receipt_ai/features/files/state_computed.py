@@ -18,6 +18,76 @@ class FilesComputedMixin:
         return f"{self.upload_progress_pct}%"
 
     @rx.var
+    def upload_stage_title(self) -> str:
+        """Human-readable upload phase label for overlay."""
+        stage = (self.upload_stage or "").lower()
+        if stage == "preparing":
+            return "Preparing upload..."
+        if stage == "uploading":
+            return "Uploading file..."
+        if stage == "extracting":
+            return "Extracting text..."
+        if stage == "indexing":
+            return "Indexing document..."
+        if stage == "finalizing":
+            return "Finalizing..."
+        if self.upload_progress_pct >= 100:
+            return "Processing..."
+        return "Uploading..."
+
+    @rx.var
+    def upload_counter_label(self) -> str:
+        """File-level progress indicator (e.g., 2 / 5 files)."""
+        total = max(0, int(self.upload_total_files))
+        done = max(0, int(self.upload_completed_files))
+        if total <= 0:
+            return "0 / 0 files"
+        return f"{min(done, total)} / {total} files"
+
+    @rx.var
+    def upload_activity_log(self) -> str:
+        """Friendly process log line shown in the upload overlay."""
+        detail = (self.upload_stage_detail or "").strip()
+        if not detail:
+            return "AI Receipt Log: waiting for upload events..."
+        return f"AI Receipt Log: {detail}"
+
+    @rx.var
+    def queued_upload_count(self) -> int:
+        """Number of files currently queued for upload (excluding removed)."""
+        removed = {str(name).lower() for name in self.excluded_upload_names}
+        return sum(
+            1
+            for row in self.upload_queue_previews
+            if str(row.get("name", "")).strip() and str(row.get("name", "")).lower() not in removed
+        )
+
+    @rx.var
+    def removed_upload_count(self) -> int:
+        """Number of files marked removed from queue."""
+        return len(self.excluded_upload_names)
+
+    @rx.var
+    def total_upload_queue_count(self) -> int:
+        """Total files currently represented in queue state."""
+        return len(self.upload_queue_previews)
+
+    @rx.var
+    def upload_queue_summary_label(self) -> str:
+        """Compact queue summary text."""
+        return (
+            f"Queued: {self.queued_upload_count} • "
+            f"Removed: {self.removed_upload_count} • "
+            f"Total: {self.total_upload_queue_count}"
+        )
+
+    @rx.var
+    def can_submit_upload_queue(self) -> bool:
+        """Whether upload action should be enabled."""
+        # Preview cache is best-effort (on_drop only), so keep upload action available.
+        return not self.is_uploading
+
+    @rx.var
     def sidebar_width_css(self) -> str:
         """Left explorer width as a CSS percentage (desktop split)."""
         return f"{self.sidebar_width_pct}%"
