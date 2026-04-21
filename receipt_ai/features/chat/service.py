@@ -5,49 +5,51 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import selectinload
 
 from receipt_ai.core.db.models import Conversation, Message, MessageSource
-from receipt_ai.core.db.session import get_session
+from receipt_ai.core.db.session import get_async_session
 from receipt_ai.features.chat.models import ConversationItem
 
 
-def list_chat_history(user_id: str) -> list[ConversationItem]:
-    with get_session() as db:
-        rows = db.scalars(
+async def list_chat_history(user_id: str) -> list[ConversationItem]:
+    async with get_async_session() as db:
+        rows = (
+            await db.scalars(
             select(Conversation)
             .where(Conversation.user_id == user_id)
             .order_by(desc(Conversation.updated_at), desc(Conversation.created_at))
+            )
         ).all()
         return [ConversationItem(id=row.id, title=row.title) for row in rows]
 
 
-def list_chat_payload(user_id: str) -> list[dict[str, str]]:
-    return [{"id": item.id, "title": item.title} for item in list_chat_history(user_id)]
+async def list_chat_payload(user_id: str) -> list[dict[str, str]]:
+    return [{"id": item.id, "title": item.title} for item in await list_chat_history(user_id)]
 
 
-def create_conversation(user_id: str, *, title: str) -> str:
+async def create_conversation(user_id: str, *, title: str) -> str:
     clean_title = title.strip() or "New chat"
-    with get_session() as db:
+    async with get_async_session() as db:
         row = Conversation(user_id=user_id, title=clean_title)
         db.add(row)
-        db.commit()
-        db.refresh(row)
+        await db.commit()
+        await db.refresh(row)
         return row.id
 
 
-def rename_conversation(conversation_id: str, *, title: str) -> None:
+async def rename_conversation(conversation_id: str, *, title: str) -> None:
     clean_title = title.strip() or "New chat"
-    with get_session() as db:
-        row = db.scalar(select(Conversation).where(Conversation.id == conversation_id))
+    async with get_async_session() as db:
+        row = await db.scalar(select(Conversation).where(Conversation.id == conversation_id))
         if row is None:
             return
         row.title = clean_title
         row.updated_at = datetime.now(UTC)
-        db.commit()
+        await db.commit()
 
 
-def delete_conversation(conversation_id: str, *, user_id: str) -> None:
+async def delete_conversation(conversation_id: str, *, user_id: str) -> None:
     """Delete a conversation owned by the given user."""
-    with get_session() as db:
-        row = db.scalar(
+    async with get_async_session() as db:
+        row = await db.scalar(
             select(Conversation).where(
                 Conversation.id == conversation_id,
                 Conversation.user_id == user_id,
@@ -55,32 +57,32 @@ def delete_conversation(conversation_id: str, *, user_id: str) -> None:
         )
         if row is None:
             return
-        db.delete(row)
-        db.commit()
+        await db.delete(row)
+        await db.commit()
 
 
-def append_message(conversation_id: str, *, role: str, content: str) -> str:
-    with get_session() as db:
+async def append_message(conversation_id: str, *, role: str, content: str) -> str:
+    async with get_async_session() as db:
         msg = Message(conversation_id=conversation_id, role=role, content=content)
         db.add(msg)
-        conv = db.scalar(select(Conversation).where(Conversation.id == conversation_id))
+        conv = await db.scalar(select(Conversation).where(Conversation.id == conversation_id))
         if conv is not None:
             conv.updated_at = datetime.now(UTC)
-        db.commit()
-        db.refresh(msg)
+        await db.commit()
+        await db.refresh(msg)
         return str(msg.id)
 
 
-def append_assistant_message(
+async def append_assistant_message(
     conversation_id: str,
     *,
     content: str,
     sources: list[dict[str, Any]] | None = None,
 ) -> str:
-    with get_session() as db:
+    async with get_async_session() as db:
         msg = Message(conversation_id=conversation_id, role="assistant", content=content)
         db.add(msg)
-        db.flush()
+        await db.flush()
 
         for i, src in enumerate(sources or [], start=1):
             file_key = str(src.get("file_key", "")).strip()
@@ -107,20 +109,22 @@ def append_assistant_message(
                 )
             )
 
-        conv = db.scalar(select(Conversation).where(Conversation.id == conversation_id))
+        conv = await db.scalar(select(Conversation).where(Conversation.id == conversation_id))
         if conv is not None:
             conv.updated_at = datetime.now(UTC)
-        db.commit()
+        await db.commit()
         return str(msg.id)
 
 
-def list_conversation_messages(conversation_id: str) -> list[dict[str, Any]]:
-    with get_session() as db:
-        rows = db.scalars(
+async def list_conversation_messages(conversation_id: str) -> list[dict[str, Any]]:
+    async with get_async_session() as db:
+        rows = (
+            await db.scalars(
             select(Message)
             .where(Message.conversation_id == conversation_id)
             .options(selectinload(Message.sources))
             .order_by(Message.created_at.asc())
+            )
         ).all()
         payload: list[dict[str, Any]] = []
         for row in rows:

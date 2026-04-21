@@ -8,6 +8,8 @@ sidebar, agri divider grip. Each route injects its own ``rx.el.style(...)`` bloc
 NAV_SHELL_CSS = """
 .nav-shell-row {
   min-height: 3.5rem;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
 }
 .nav-shell-inner {
   width: 100%;
@@ -41,7 +43,7 @@ NAV_SHELL_CSS = """
 .nav-desktop-only {
   display: none !important;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   flex-wrap: nowrap;
   white-space: nowrap;
   position: relative;
@@ -63,9 +65,19 @@ NAV_SHELL_CSS = """
 .nav-desktop-only button {
   white-space: nowrap;
   min-height: 30px;
-  padding-left: 0.625rem;
-  padding-right: 0.625rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
   line-height: 1;
+}
+.nav-shell-row > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.nav-shell-row > div:last-child {
+  flex: 0 0 auto;
+}
+.nav-brand-link {
+  flex-shrink: 0;
 }
 @media (min-width: 640px) {
   .nav-desktop-only {
@@ -311,6 +323,12 @@ CHAT_SHELL_CSS = """
   pointer-events: none;
   transform: translateX(2px);
   transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.chat-thread-row {
+  border-radius: 10px;
+}
+.chat-thread-row:focus-within {
+  background: var(--chat-thread-focus, rgba(34, 197, 94, 0.08));
 }
 .chat-thread-row:hover .chat-thread-delete-btn,
 .chat-thread-row:focus-within .chat-thread-delete-btn {

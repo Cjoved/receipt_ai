@@ -66,6 +66,8 @@ class ChatState(rx.State):
     chat_sidebar_width_pct: int = 22
     chat_mobile_view: str = "history"
     show_new_chat_confirm: bool = False
+    show_delete_chat_confirm: bool = False
+    pending_delete_conversation_id: str = ""
 
     @rx.var
     def chat_sidebar_width_css(self) -> str:
@@ -109,7 +111,7 @@ class ChatState(rx.State):
             self.messages = []
             self.streaming_text = ""
             return
-        self.sidebar_threads = list_chat_payload(auth.user_id)
+        self.sidebar_threads = await list_chat_payload(auth.user_id)
         if not self.sidebar_threads:
             self.active_conversation_id = ""
             self.messages = []
@@ -125,15 +127,28 @@ class ChatState(rx.State):
         self.streaming_text = ""
         await self._load_active_conversation_messages()
 
-    async def delete_thread(self, conversation_id: str) -> None:
+    def request_delete_thread(self, conversation_id: str) -> None:
         convo_id = (conversation_id or "").strip()
+        if not convo_id:
+            return
+        self.pending_delete_conversation_id = convo_id
+        self.show_delete_chat_confirm = True
+
+    def cancel_delete_thread(self) -> None:
+        self.show_delete_chat_confirm = False
+        self.pending_delete_conversation_id = ""
+
+    async def confirm_delete_thread(self) -> None:
+        convo_id = (self.pending_delete_conversation_id or "").strip()
+        self.show_delete_chat_confirm = False
+        self.pending_delete_conversation_id = ""
         if not convo_id:
             return
         auth = await self.get_state(AuthState)
         if not auth.user_id:
             return
-        delete_conversation(convo_id, user_id=auth.user_id)
-        self.sidebar_threads = list_chat_payload(auth.user_id)
+        await delete_conversation(convo_id, user_id=auth.user_id)
+        self.sidebar_threads = await list_chat_payload(auth.user_id)
         if self.active_conversation_id == convo_id:
             self.active_conversation_id = ""
             self.messages = []
@@ -148,7 +163,7 @@ class ChatState(rx.State):
             self.messages = []
             self.streaming_text = ""
             return
-        self.messages = list_conversation_messages(convo_id)
+        self.messages = await list_conversation_messages(convo_id)
         self.streaming_text = ""
 
     def set_draft(self, value: str) -> None:
@@ -227,10 +242,10 @@ class ChatState(rx.State):
             return
 
         if not self.active_conversation_id:
-            self.active_conversation_id = create_conversation(auth.user_id, title=clipped[:80])
-            self.sidebar_threads = list_chat_payload(auth.user_id)
+            self.active_conversation_id = await create_conversation(auth.user_id, title=clipped[:80])
+            self.sidebar_threads = await list_chat_payload(auth.user_id)
 
-        append_message(self.active_conversation_id, role="user", content=clipped)
+        await append_message(self.active_conversation_id, role="user", content=clipped)
         self.messages = [
             *self.messages,
             {"role": "user", "content": clipped, "sources": [], "sources_count": 0, "sources_preview": ""},
@@ -268,7 +283,7 @@ class ChatState(rx.State):
                     yield
             yield
             self.streaming_text = ""
-            append_assistant_message(
+            await append_assistant_message(
                 self.active_conversation_id,
                 content=reply.content,
                 sources=[
@@ -283,8 +298,8 @@ class ChatState(rx.State):
                 ],
             )
             if len(self.messages) <= 2:
-                rename_conversation(self.active_conversation_id, title=clipped[:80])
-                self.sidebar_threads = list_chat_payload(auth.user_id)
+                await rename_conversation(self.active_conversation_id, title=clipped[:80])
+                self.sidebar_threads = await list_chat_payload(auth.user_id)
             self._push_assistant_message(reply)
             if reply.error and reply.retryable:
                 self.last_failed_prompt = clipped
@@ -336,7 +351,7 @@ class ChatState(rx.State):
                     yield
             yield
             self.streaming_text = ""
-            append_assistant_message(
+            await append_assistant_message(
                 self.active_conversation_id,
                 content=reply.content,
                 sources=[

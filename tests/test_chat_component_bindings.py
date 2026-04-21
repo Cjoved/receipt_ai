@@ -5,7 +5,7 @@ from pathlib import Path
 class ChatComponentBindingsTests(unittest.TestCase):
     def test_composer_has_enter_send_script_binding(self):
         source = Path("receipt_ai/components/chat_components.py").read_text(encoding="utf-8")
-        self.assertIn("if (event.key === 'Enter' && !event.shiftKey && !event.isComposing)", source)
+        self.assertIn("(event.key === 'Enter' && !event.shiftKey && !event.isComposing)", source)
         self.assertIn("callback=ChatState.handle_composer_key_signal", source)
 
     def test_assistant_bubble_has_retry_and_citations(self):
@@ -16,7 +16,8 @@ class ChatComponentBindingsTests(unittest.TestCase):
     def test_history_has_hover_delete_button(self):
         source = Path("receipt_ai/components/chat_components.py").read_text(encoding="utf-8")
         self.assertIn("chat-thread-delete-btn", source)
-        self.assertIn("on_click=ChatState.delete_thread(thread[\"id\"])", source)
+        self.assertIn("on_click=ChatState.request_delete_thread(thread[\"id\"])", source)
+        self.assertIn("delete_chat_confirm_modal()", source)
 
 
 if __name__ == "__main__":

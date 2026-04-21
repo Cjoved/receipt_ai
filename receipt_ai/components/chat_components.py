@@ -43,6 +43,22 @@ def new_chat_confirm_modal() -> rx.Component:
     )
 
 
+def delete_chat_confirm_modal() -> rx.Component:
+    return confirm_modal(
+        open_state=ChatState.show_delete_chat_confirm,
+        title="Delete this conversation?",
+        body=rx.text(
+            "This will permanently remove the selected thread and its messages.",
+            size="2",
+            color=rx.color("gray", 11),
+        ),
+        confirm_label="Delete",
+        on_confirm=ChatState.confirm_delete_thread,
+        on_cancel=ChatState.cancel_delete_thread,
+        confirm_color_scheme="red",
+    )
+
+
 _PANEL = {
     "width": "100%",
     "border": f"1px solid {BORDER_COLOR}",
@@ -76,8 +92,8 @@ def _chat_user_bubble(m) -> rx.Component:
                 height="28px",
                 flex_shrink="0",
                 border_radius="8px",
-                background="linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
-                box_shadow="0 2px 8px rgba(34, 197, 94, 0.28)",
+                background=_mode("linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)", "linear-gradient(135deg, #0f766e 0%, #115e59 100%)"),
+                box_shadow="0 2px 8px rgba(20, 184, 166, 0.3)",
             ),
             justify="end",
             align="start",
@@ -286,6 +302,7 @@ def chat_history() -> rx.Component:
                 on_click=ChatState.open_new_chat_confirm,
             ),
             new_chat_confirm_modal(),
+            delete_chat_confirm_modal(),
             rx.vstack(
                 rx.foreach(
                     ChatState.sidebar_threads,
@@ -327,7 +344,7 @@ def chat_history() -> rx.Component:
                             color_scheme="red",
                             class_name="chat-thread-delete-btn",
                             aria_label="Delete conversation",
-                            on_click=ChatState.delete_thread(thread["id"]),
+                            on_click=ChatState.request_delete_thread(thread["id"]),
                         ),
                         class_name="chat-thread-row",
                         width="100%",
@@ -396,7 +413,7 @@ def chat_composer() -> rx.Component:
                         value=ChatState.draft_message,
                         on_change=ChatState.set_draft,
                         on_key_down=rx.call_script(
-                            "if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); return 'send_now'; } return '';",
+                            "(event.key === 'Enter' && !event.shiftKey && !event.isComposing) ? (event.preventDefault(), 'send_now') : ''",
                             callback=ChatState.handle_composer_key_signal,
                         ),
                         size="2",
@@ -582,7 +599,7 @@ def chat_center_panel() -> rx.Component:
                     max_height="calc(100vh - 220px)",
                     id="chat-thread-scroll",
                     overflow_y="auto",
-                    padding_y="0.5rem",
+                    padding_y="0.6rem",
                     padding_right="0.25rem",
                 ),
                 chat_composer(),

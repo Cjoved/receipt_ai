@@ -131,7 +131,7 @@ def login_page() -> rx.Component:
                                 disabled=AuthState.is_submitting,
                             ),
                             rx.text(
-                                "Demo credentials: admin@receipt.ai / admin123",
+                                "Use your seeded admin account credentials.",
                                 size="1",
                                 color=rx.color("gray", 9),
                             ),

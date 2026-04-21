@@ -6,9 +6,8 @@ from receipt_ai.features.auth.service import authenticate_user, create_session_t
 class AuthState(rx.State):
     """DB-backed auth state for login gating."""
 
-    # Pre-filled for local dev: open login and press Enter to sign in.
-    email: str = "admin@receipt.ai"
-    password: str = "admin123"
+    email: str = ""
+    password: str = ""
     show_password: bool = False
     auth_error: str = ""
     is_submitting: bool = False
@@ -23,7 +22,7 @@ class AuthState(rx.State):
     def clear_auth_error(self) -> None:
         self.auth_error = ""
 
-    def login(self):
+    async def login(self):
         """Authenticate against DB users table and issue a session token."""
         email = self.email.strip().lower()
         password = self.password
@@ -35,9 +34,9 @@ class AuthState(rx.State):
 
         self.is_submitting = True
         try:
-            user = authenticate_user(email, password)
+            user = await authenticate_user(email, password)
             if user is not None:
-                token = create_session_token(user.id)
+                token = await create_session_token(user.id)
                 self.auth_token = token
                 self.is_authenticated = True
                 self.user_id = user.id
@@ -45,27 +44,31 @@ class AuthState(rx.State):
                 return rx.redirect("/files")
             self.auth_error = "Invalid credentials."
             return None
+        except Exception:
+            # Avoid exposing internal details but make the failure actionable.
+            self.auth_error = "Login failed: database is unreachable or not initialized."
+            return None
         finally:
             self.is_submitting = False
 
-    def logout(self):
+    async def logout(self):
         if self.auth_token:
-            delete_session_token(self.auth_token)
+            await delete_session_token(self.auth_token)
         self.auth_token = ""
         self.is_authenticated = False
         self.user_id = ""
-        self.email = "admin@receipt.ai"
-        self.password = "admin123"
+        self.email = ""
+        self.password = ""
         self.auth_error = ""
         self.show_password = False
         self.user_display_name = "Demo user"
         return rx.redirect("/login")
 
-    def guard_protected_route(self):
+    async def guard_protected_route(self):
         """Redirect guests away from protected pages."""
         if not self.auth_token:
             return rx.redirect("/login")
-        user = get_session_user(self.auth_token)
+        user = await get_session_user(self.auth_token)
         if user is None:
             self.auth_token = ""
             self.is_authenticated = False
@@ -77,10 +80,10 @@ class AuthState(rx.State):
         self.user_display_name = user.display_name
         return None
 
-    def guard_login_route(self):
+    async def guard_login_route(self):
         """Redirect authenticated users away from login page."""
         if self.auth_token:
-            user = get_session_user(self.auth_token)
+            user = await get_session_user(self.auth_token)
             if user is not None:
                 self.is_authenticated = True
                 self.user_id = user.id
