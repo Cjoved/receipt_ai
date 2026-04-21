@@ -41,14 +41,31 @@ NAV_SHELL_CSS = """
 .nav-desktop-only {
   display: none !important;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   position: relative;
   z-index: 2;
   isolation: isolate;
 }
 .nav-desktop-only a {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin: 0;
+  padding: 0;
   position: relative;
   z-index: 1;
+}
+.nav-desktop-only a + a {
+  margin-left: 0.125rem;
+}
+.nav-desktop-only button {
+  white-space: nowrap;
+  min-height: 30px;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+  line-height: 1;
 }
 @media (min-width: 640px) {
   .nav-desktop-only {
@@ -289,6 +306,18 @@ CHAT_SHELL_CSS = """
 .chat-thread-header {
   display: none;
 }
+.chat-thread-row .chat-thread-delete-btn {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(2px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.chat-thread-row:hover .chat-thread-delete-btn,
+.chat-thread-row:focus-within .chat-thread-delete-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
 @media (min-width: 768px) {
   .chat-thread-header {
     display: flex;
@@ -323,5 +352,46 @@ CHAT_MARKDOWN_CSS = """
   padding: 0.55rem 0.65rem;
   border-radius: 8px;
   overflow-x: auto;
+}
+.chat-thinking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(34, 197, 94, 0.85);
+  animation: chat-dot-pulse 1.15s ease-in-out infinite;
+}
+.chat-thinking-dots .chat-thinking-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.chat-thinking-dots .chat-thinking-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes chat-dot-pulse {
+  0%, 80%, 100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.chat-stream-cursor-wrap.chat-md-prose .markdown::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: rgba(34, 197, 94, 0.95);
+  animation: chat-caret-blink 1s step-end infinite;
+}
+@keyframes chat-caret-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 """

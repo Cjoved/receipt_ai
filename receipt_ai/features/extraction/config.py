@@ -44,6 +44,11 @@ class ExtractionConfig:
     embedding_max_retries: int = 2
     index_output_dir: str = "assets/chunk_index"
     kimi_chat_model: str = "moonshot-v1-8k"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_chat_model: str = "deepseek-chat"
+    deepseek_reasoning_model: str = "deepseek-reasoner"
+    deepseek_timeout_seconds: int = 60
     rag_top_k: int = 8
     # Optional: set QDRANT_URL (e.g. http://localhost:6333) to index + retrieve via Qdrant + LangChain.
     qdrant_url: str = ""
@@ -74,6 +79,15 @@ class ExtractionConfig:
             embedding_max_retries=_env_int("EMBEDDING_MAX_RETRIES", 2),
             index_output_dir=os.getenv("INDEX_OUTPUT_DIR", "assets/chunk_index").strip() or "assets/chunk_index",
             kimi_chat_model=os.getenv("KIMI_CHAT_MODEL", "moonshot-v1-8k").strip() or "moonshot-v1-8k",
+            deepseek_api_key=(os.getenv("DEEPSEEK_API_KEY", "").strip() or os.getenv("KIMI_API_KEY", "").strip()),
+            deepseek_base_url=(
+                os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip() or "https://api.deepseek.com"
+            ),
+            deepseek_chat_model=os.getenv("DEEPSEEK_CHAT_MODEL", "deepseek-chat").strip() or "deepseek-chat",
+            deepseek_reasoning_model=(
+                os.getenv("DEEPSEEK_REASONING_MODEL", "deepseek-reasoner").strip() or "deepseek-reasoner"
+            ),
+            deepseek_timeout_seconds=_env_int("DEEPSEEK_TIMEOUT_SECONDS", _env_int("KIMI_TIMEOUT_SECONDS", 60)),
             rag_top_k=_env_int("RAG_TOP_K", 8),
             qdrant_url=os.getenv("QDRANT_URL", "").strip(),
             qdrant_api_key=os.getenv("QDRANT_API_KEY", "").strip(),
