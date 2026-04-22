@@ -36,7 +36,7 @@ class ExtractionOrchestrator:
             text = extractor.extract(request)
             text = normalize_text(text)
             warnings = low_quality_warnings(text)
-            if extractor.name == "kimi-vision":
+            if extractor.name.startswith("kimi-vision"):
                 warnings.extend(receipt_quality_warnings(text))
 
             elapsed = int((time.perf_counter() - started) * 1000)

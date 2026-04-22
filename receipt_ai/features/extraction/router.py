@@ -24,7 +24,7 @@ class ExtractionRouter:
 def build_default_router(config: ExtractionConfig) -> ExtractionRouter:
     return ExtractionRouter(
         [
-            PdfExtractor(),
+            PdfExtractor(config),
             DocxExtractor(),
             SheetExtractor(config),
             ImageKimiExtractor(config),
