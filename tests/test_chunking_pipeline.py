@@ -41,6 +41,37 @@ class ChunkingPipelineTests(unittest.TestCase):
         self.assertEqual(chunks[0].chunk_index, 0)
         self.assertIn("chunk_of", chunks[0].metadata)
 
+    def test_pdf_segments_keep_page_indices_in_chunk_metadata(self):
+        config = ExtractionConfig(chunk_size=300, chunk_overlap=20, chunk_min_chars=5)
+        text = (
+            "--- Page 1 ---\n"
+            "Merchant A\nTotal 100\n\n"
+            "--- Page 2 ---\n"
+            "Merchant A continued\nTax 12\n"
+        )
+        segments = segment_text_for_chunking(text, "receipt.pdf")
+        self.assertEqual(len(segments), 2)
+        self.assertEqual(segments[0].page_index, 1)
+        self.assertEqual(segments[1].page_index, 2)
+
+        chunks = build_chunks(
+            ChunkBuildInput(
+                file_key="Folder/receipt.pdf",
+                source_name="receipt.pdf",
+                doc_type="pdf",
+                segments=segments,
+            ),
+            config,
+        )
+        self.assertGreaterEqual(len(chunks), 2)
+        page_values = {ch.metadata.get("page_index") for ch in chunks}
+        self.assertIn(1, page_values)
+        self.assertIn(2, page_values)
+        self.assertTrue(all(ch.metadata.get("file_type") == "pdf" for ch in chunks))
+        self.assertTrue(all(isinstance(ch.metadata.get("uploaded_epoch"), int) for ch in chunks))
+        self.assertTrue(any("::p1" in ch.file_key for ch in chunks))
+        self.assertTrue(any("::p2" in ch.file_key for ch in chunks))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,16 +15,21 @@ from receipt_ai.features.extraction.retrieval.similarity import cosine_similarit
 
 class QdrantFilterTests(unittest.TestCase):
     def test_build_filter_file_key(self):
-        f = build_qdrant_filter(folder_prefix=None, file_key_exact="a/b.txt")
+        f = build_qdrant_filter(folder_prefix=None, file_key_exact="a/b.txt", file_type_exact=None)
         assert f is not None
         self.assertEqual(len(f.must), 1)
 
     def test_build_filter_folder(self):
-        f = build_qdrant_filter(folder_prefix="MyFolder", file_key_exact=None)
+        f = build_qdrant_filter(folder_prefix="MyFolder", file_key_exact=None, file_type_exact=None)
         assert f is not None
 
+    def test_build_filter_with_file_type(self):
+        f = build_qdrant_filter(folder_prefix="MyFolder", file_key_exact=None, file_type_exact="pdf")
+        assert f is not None
+        self.assertEqual(len(f.must), 2)
+
     def test_build_filter_global(self):
-        self.assertIsNone(build_qdrant_filter(folder_prefix=None, file_key_exact=None))
+        self.assertIsNone(build_qdrant_filter(folder_prefix=None, file_key_exact=None, file_type_exact=None))
 
 
 class SimilarityTests(unittest.TestCase):
