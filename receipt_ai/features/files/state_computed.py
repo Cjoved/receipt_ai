@@ -267,6 +267,8 @@ class FilesComputedMixin:
                             "type": child.get("type", "File"),
                             "size": child.get("size", "-"),
                             "size_bytes": child.get("size_bytes", "0"),
+                            "uploaded_at": child.get("uploaded_at", child.get("modified_at", "-")),
+                            "uploaded_epoch": child.get("uploaded_epoch", child.get("modified_epoch", "0")),
                             "modified_at": child.get("modified_at", "-"),
                             "modified_epoch": child.get("modified_epoch", "0"),
                             "status": child.get("status", "Completed"),
@@ -307,9 +309,15 @@ class FilesComputedMixin:
             rows.sort(key=lambda row: int(row.get("size_bytes", "0")), reverse=True)
         elif self.sort_mode == "size_asc":
             rows.sort(key=lambda row: int(row.get("size_bytes", "0")))
+        elif self.sort_mode == "uploaded_desc":
+            rows.sort(key=lambda row: int(row.get("uploaded_epoch", row.get("modified_epoch", "0"))), reverse=True)
+        elif self.sort_mode == "uploaded_asc":
+            rows.sort(key=lambda row: int(row.get("uploaded_epoch", row.get("modified_epoch", "0"))))
         elif self.sort_mode == "modified_asc":
             rows.sort(key=lambda row: int(row.get("modified_epoch", "0")))
-        else:
+        elif self.sort_mode == "modified_desc":
             rows.sort(key=lambda row: int(row.get("modified_epoch", "0")), reverse=True)
+        else:
+            rows.sort(key=lambda row: int(row.get("uploaded_epoch", row.get("modified_epoch", "0"))), reverse=True)
 
         return rows

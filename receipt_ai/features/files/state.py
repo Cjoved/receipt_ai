@@ -85,7 +85,7 @@ class FilesState(
     show_download_confirm: bool = False
     search_query: str = ""
     active_type_filter: str = "all"
-    sort_mode: str = "modified_desc"
+    sort_mode: str = "uploaded_desc"
 
     # Upload overlay state (global drag/drop modal).
     show_drop_overlay: bool = False
@@ -99,8 +99,11 @@ class FilesState(
     upload_zone_id: str = FILES_UPLOAD_ZONE_ID
     excluded_upload_names: list[str] = []
     upload_queue_previews: list[dict[str, str]] = []
+    upload_queue_pdf_pages: dict[str, list[str]] = {}
     queued_preview_name: str = ""
     queued_preview_url: str = ""
+    queued_preview_kind: str = ""
+    queued_preview_pages: list[str] = []
     show_queued_preview: bool = False
     # Which folder is currently expanded in the sidebar.
     expanded_folder_name: str = ""
@@ -149,6 +152,8 @@ class FilesState(
                     "type": str(child.get("type", "File")),
                     "size": str(child.get("size", "-")),
                     "size_bytes": str(child.get("size_bytes", "0")),
+                    "uploaded_at": str(child.get("uploaded_at", child.get("modified_at", "-"))),
+                    "uploaded_epoch": str(child.get("uploaded_epoch", child.get("modified_epoch", "0"))),
                     "modified_at": str(child.get("modified_at", "-")),
                     "modified_epoch": str(child.get("modified_epoch", "0")),
                     "status": str(child.get("status", "Completed")),
@@ -186,10 +191,16 @@ class FilesState(
             rows.sort(key=lambda row: int(row.get("size_bytes", "0")), reverse=True)
         elif self.sort_mode == "size_asc":
             rows.sort(key=lambda row: int(row.get("size_bytes", "0")))
+        elif self.sort_mode == "uploaded_desc":
+            rows.sort(key=lambda row: int(row.get("uploaded_epoch", row.get("modified_epoch", "0"))), reverse=True)
+        elif self.sort_mode == "uploaded_asc":
+            rows.sort(key=lambda row: int(row.get("uploaded_epoch", row.get("modified_epoch", "0"))))
         elif self.sort_mode == "modified_asc":
             rows.sort(key=lambda row: int(row.get("modified_epoch", "0")))
-        else:
+        elif self.sort_mode == "modified_desc":
             rows.sort(key=lambda row: int(row.get("modified_epoch", "0")), reverse=True)
+        else:
+            rows.sort(key=lambda row: int(row.get("uploaded_epoch", row.get("modified_epoch", "0"))), reverse=True)
         return rows
 
     @rx.var
@@ -284,13 +295,22 @@ class FilesState(
             return int(value.timestamp())
         return 0
 
-    def _hydrate_child(self, name: str, size_bytes: int = 0, modified_at: Any = None) -> dict[str, str]:
+    def _hydrate_child(
+        self,
+        name: str,
+        size_bytes: int = 0,
+        modified_at: Any = None,
+        uploaded_at: Any = None,
+    ) -> dict[str, str]:
         """Attach table/grid metadata on top of extension icon metadata."""
         meta = child_file_meta(name)
+        uploaded_value = uploaded_at if uploaded_at is not None else modified_at
         return {
             **meta,
             "size": self._format_size(size_bytes),
             "size_bytes": str(size_bytes),
+            "uploaded_at": self._format_modified(uploaded_value),
+            "uploaded_epoch": str(self._modified_epoch(uploaded_value)),
             "modified_at": self._format_modified(modified_at),
             "modified_epoch": str(self._modified_epoch(modified_at)),
             "status": "Completed",
@@ -310,6 +330,7 @@ class FilesState(
             row = self._hydrate_child(
                 name,
                 int(obj.get("size_bytes", 0) or 0),
+                obj.get("last_modified"),
                 obj.get("last_modified"),
             )
             file_key = f"{storage_folder}/{name}"
@@ -517,6 +538,9 @@ class FilesState(
 
     def clear_removed_upload_files(self) -> None:
         return FilesUploadActionsMixin.clear_removed_upload_files(self)
+
+    def open_queued_file_preview(self, filename: str) -> None:
+        return FilesUploadActionsMixin.open_queued_file_preview(self, filename)
 
     def open_queued_image_preview(self, filename: str) -> None:
         return FilesUploadActionsMixin.open_queued_image_preview(self, filename)

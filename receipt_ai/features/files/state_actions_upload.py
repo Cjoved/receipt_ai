@@ -1,5 +1,6 @@
 import reflex as rx
 import base64
+import fitz
 
 from receipt_ai.core.upload_constants import (
     FILES_PANEL_UPLOAD_ZONE_ID,
@@ -79,7 +80,10 @@ class FilesUploadActionsMixin:
         self.show_queued_preview = False
         self.queued_preview_name = ""
         self.queued_preview_url = ""
+        self.queued_preview_kind = ""
+        self.queued_preview_pages = []
         self.upload_queue_previews = []
+        self.upload_queue_pdf_pages = {}
         self.upload_error = ""
         self.excluded_upload_names = []
         self._stash_clear_modal_files()
@@ -95,7 +99,10 @@ class FilesUploadActionsMixin:
         self.show_queued_preview = False
         self.queued_preview_name = ""
         self.queued_preview_url = ""
+        self.queued_preview_kind = ""
+        self.queued_preview_pages = []
         self.upload_queue_previews = []
+        self.upload_queue_pdf_pages = {}
         self.upload_stage = ""
         self.upload_stage_detail = ""
         self.upload_total_files = 0
@@ -291,6 +298,8 @@ class FilesUploadActionsMixin:
             self.show_queued_preview = False
             self.queued_preview_name = ""
             self.queued_preview_url = ""
+            self.queued_preview_kind = ""
+            self.queued_preview_pages = []
             self.show_upload_confirm = False
             self.show_panel_drop_confirm = False
             self.show_drop_overlay = False
@@ -318,31 +327,45 @@ class FilesUploadActionsMixin:
         """Restore all previously removed files back to the upload queue."""
         self.excluded_upload_names = []
 
-    def open_queued_image_preview(self, filename: str) -> None:
-        """Open fullscreen preview for a queued image before upload."""
+    def open_queued_file_preview(self, filename: str) -> None:
+        """Open queued preview modal for supported pre-upload types (image/pdf)."""
         self.queued_preview_name = filename
         match = next((row for row in self.upload_queue_previews if row.get("name", "") == filename), None)
-        if not match or str(match.get("is_image", "0")) != "1":
+        if not match:
             return
+        preview_kind = str(match.get("preview_kind", ""))
+        if preview_kind not in {"image", "pdf", "pdf_image"}:
+            return
+        self.queued_preview_kind = preview_kind
         self.queued_preview_url = str(match.get("preview_url", ""))
+        self.queued_preview_pages = list(self.upload_queue_pdf_pages.get(filename, []))
         if self.queued_preview_url == "":
             self.upload_error = f"Preview unavailable for '{filename}'."
             return
         self.show_queued_preview = True
+
+    def open_queued_image_preview(self, filename: str) -> None:
+        """Backward-compatible alias for queued preview action."""
+        return self.open_queued_file_preview(filename)
 
     def close_queued_image_preview(self) -> None:
         """Close queued image preview modal."""
         self.show_queued_preview = False
         self.queued_preview_name = ""
         self.queued_preview_url = ""
+        self.queued_preview_kind = ""
+        self.queued_preview_pages = []
 
     async def cache_upload_previews(self, files: list[rx.UploadFile]) -> None:
         """Build queue preview URLs from dropped/selected files (before upload)."""
         previews: list[dict[str, str]] = []
+        pdf_pages_map: dict[str, list[str]] = {}
         self._stash_set_modal_files(files)
         self.show_queued_preview = False
         self.queued_preview_name = ""
         self.queued_preview_url = ""
+        self.queued_preview_kind = ""
+        self.queued_preview_pages = []
         # Fresh selection should start with a clean active queue.
         self.excluded_upload_names = []
         for file in files:
@@ -351,7 +374,9 @@ class FilesUploadActionsMixin:
                 continue
             lowered = filename.lower()
             is_image = lowered.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"))
+            is_pdf = lowered.endswith(".pdf")
             preview_url = ""
+            preview_kind = "file"
             if is_image:
                 try:
                     await file.seek(0)
@@ -366,26 +391,54 @@ class FilesUploadActionsMixin:
                         mime = f"image/{ext}"
                     encoded = base64.b64encode(file_bytes).decode("ascii")
                     preview_url = f"data:{mime};base64,{encoded}"
+                    preview_kind = "image"
                 except Exception:
                     preview_url = ""
                     is_image = False
+            elif is_pdf:
+                try:
+                    await file.seek(0)
+                    file_bytes = await file.read()
+                    await file.seek(0)
+                    doc = fitz.open(stream=file_bytes, filetype="pdf")
+                    if doc.page_count > 0:
+                        page_urls: list[str] = []
+                        total_pages = min(doc.page_count, 12)
+                        for page_index in range(total_pages):
+                            page = doc.load_page(page_index)
+                            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+                            png_bytes = pix.tobytes("png")
+                            encoded = base64.b64encode(png_bytes).decode("ascii")
+                            page_urls.append(f"data:image/png;base64,{encoded}")
+                        preview_url = page_urls[0]
+                        pdf_pages_map[filename] = page_urls
+                        preview_kind = "pdf_image"
+                    doc.close()
+                except Exception:
+                    preview_url = ""
+                    preview_kind = "pdf"
             previews.append(
                 {
                     "name": filename,
                     "is_image": "1" if is_image else "0",
+                    "preview_kind": preview_kind,
                     "preview_url": preview_url,
                 }
             )
         self.upload_queue_previews = previews
+        self.upload_queue_pdf_pages = pdf_pages_map
 
     def clear_upload_selection(self):
         """Clear staged upload list and skipped markers."""
         self.excluded_upload_names = []
         self.upload_queue_previews = []
+        self.upload_queue_pdf_pages = {}
         self._stash_clear_modal_files()
         self.show_queued_preview = False
         self.queued_preview_name = ""
         self.queued_preview_url = ""
+        self.queued_preview_kind = ""
+        self.queued_preview_pages = []
         return rx.clear_selected_files(self.upload_zone_id)
 
     def track_upload_progress(self, prog: dict) -> None:
@@ -529,10 +582,13 @@ class FilesUploadActionsMixin:
 
             self.excluded_upload_names = []
             self.upload_queue_previews = []
+            self.upload_queue_pdf_pages = {}
             self._stash_clear_modal_files()
             self.show_queued_preview = False
             self.queued_preview_name = ""
             self.queued_preview_url = ""
+            self.queued_preview_kind = ""
+            self.queued_preview_pages = []
             self.show_upload_confirm = False
             self.show_panel_drop_confirm = False
             self.show_drop_overlay = False
