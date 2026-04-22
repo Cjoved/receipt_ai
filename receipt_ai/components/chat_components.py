@@ -2,6 +2,7 @@ import reflex as rx
 from reflex_motion import motion
 
 from receipt_ai.components.ui.buttons import icon_button
+from receipt_ai.core.upload_constants import CHAT_UPLOAD_ACCEPT, CHAT_UPLOAD_ZONE_ID
 from receipt_ai.components.ui.modals import confirm_modal
 from receipt_ai.core.constants import (
     BORDER_COLOR,
@@ -22,6 +23,7 @@ from receipt_ai.core.theme.tokens import (
     theme_pair as _mode,
 )
 from receipt_ai.features.chat.state import ChatState
+from receipt_ai.features.auth.state import AuthState
 
 _USER_BUBBLE_BG = _mode("#16a34a", "#22c55e")
 _PANEL_TINT = _mode("rgba(248,250,252,0.92)", "rgba(9,18,36,0.82)")
@@ -407,7 +409,128 @@ def chat_composer() -> rx.Component:
                     padding_x="0.35rem",
                     padding_top="0.35rem",
                 ),
+                rx.cond(
+                    AuthState.is_standard_user & AuthState.can_chat_image_upload,
+                    rx.vstack(
+                        rx.cond(
+                            ChatState.chat_upload_previews != [],
+                            rx.hstack(
+                                rx.foreach(
+                                    ChatState.chat_upload_previews,
+                                    lambda item: rx.vstack(
+                                        rx.box(
+                                            rx.image(
+                                                src=item["preview_url"],
+                                                width="74px",
+                                                height="74px",
+                                                object_fit="cover",
+                                                border_radius="8px",
+                                                border=f"1px solid {BORDER_COLOR}",
+                                                cursor="pointer",
+                                                on_click=ChatState.open_chat_image_preview(item["name"]),
+                                            ),
+                                            rx.button(
+                                                rx.icon("x", size=12),
+                                                size="1",
+                                                variant="solid",
+                                                color_scheme="gray",
+                                                on_click=ChatState.remove_chat_upload_preview(item["name"]),
+                                                title=f"Remove {item['name']}",
+                                                aria_label=f"Remove {item['name']}",
+                                                position="absolute",
+                                                top="4px",
+                                                right="4px",
+                                                min_width="20px",
+                                                min_height="20px",
+                                                width="20px",
+                                                height="20px",
+                                                padding="0",
+                                                border_radius="9999px",
+                                            ),
+                                            position="relative",
+                                        ),
+                                        rx.text(
+                                            item["name"],
+                                            size="1",
+                                            color=MUTED_TEXT,
+                                            max_width="80px",
+                                            style={"lineHeight": "1.1"},
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                    ),
+                                ),
+                                rx.spacer(),
+                                rx.button(
+                                    "Clear",
+                                    size="1",
+                                    variant="ghost",
+                                    on_click=ChatState.clear_chat_upload_selection,
+                                ),
+                                width="100%",
+                                spacing="2",
+                                align="start",
+                            ),
+                            rx.fragment(),
+                        ),
+                        rx.cond(
+                            (ChatState.chat_upload_previews == []) & (rx.selected_files(CHAT_UPLOAD_ZONE_ID) != []),
+                            rx.hstack(
+                                rx.foreach(
+                                    rx.selected_files(CHAT_UPLOAD_ZONE_ID),
+                                    lambda fname: rx.text(fname, size="1", color=MUTED_TEXT),
+                                ),
+                                width="100%",
+                                spacing="2",
+                                align="center",
+                            ),
+                            rx.fragment(),
+                        ),
+                        rx.cond(
+                            ChatState.chat_upload_error != "",
+                            rx.text(ChatState.chat_upload_error, size="1", color="red"),
+                            rx.fragment(),
+                        ),
+                        width="100%",
+                        spacing="1",
+                        padding_x="0.45rem",
+                        padding_bottom="0.12rem",
+                    ),
+                ),
                 rx.hstack(
+                    rx.cond(
+                        AuthState.is_standard_user & AuthState.can_chat_image_upload,
+                        rx.box(
+                            rx.upload(
+                                rx.button(
+                                    rx.icon("paperclip", size=16),
+                                    size="2",
+                                    variant="soft",
+                                    title="Attach image",
+                                    disabled=ChatState.rag_busy,
+                                    width="38px",
+                                    height="38px",
+                                    min_width="38px",
+                                    padding="0",
+                                    border_radius="10px",
+                                ),
+                                id=CHAT_UPLOAD_ZONE_ID,
+                                max_files=3,
+                                accept=CHAT_UPLOAD_ACCEPT,
+                                on_drop=ChatState.cache_chat_upload_previews,
+                                width="38px",
+                                height="38px",
+                                min_height="38px",
+                                border="none",
+                                padding="0",
+                                margin="0",
+                                background="transparent",
+                            ),
+                            width="38px",
+                            height="38px",
+                            flex_shrink="0",
+                        ),
+                    ),
                     rx.text_area(
                         placeholder="Ask about your uploaded receipts…",
                         value=ChatState.draft_message,
@@ -449,6 +572,51 @@ def chat_composer() -> rx.Component:
                 ),
                 width="100%",
                 spacing="0",
+            ),
+            rx.cond(
+                ChatState.show_chat_image_preview,
+                rx.box(
+                    rx.box(
+                        rx.hstack(
+                            rx.text(
+                                ChatState.chat_preview_name,
+                                weight="bold",
+                                color=text_primary,
+                                size="2",
+                            ),
+                            rx.spacer(),
+                            rx.button(
+                                rx.icon("x", size=16),
+                                size="1",
+                                variant="soft",
+                                on_click=ChatState.close_chat_image_preview,
+                                aria_label="Close preview",
+                            ),
+                            width="100%",
+                            align="center",
+                        ),
+                        rx.image(
+                            src=ChatState.chat_preview_url,
+                            width="min(84vw, 980px)",
+                            max_height="80vh",
+                            object_fit="contain",
+                            border_radius="12px",
+                            border=f"1px solid {BORDER_COLOR}",
+                            bg=rx.color("gray", 1),
+                        ),
+                        spacing="2",
+                        width="min(86vw, 980px)",
+                    ),
+                    position="fixed",
+                    inset="0",
+                    z_index="10001",
+                    background="rgba(2, 6, 23, 0.80)",
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
+                    padding="1rem",
+                ),
+                rx.fragment(),
             ),
             border=f"1px solid {BORDER_COLOR}",
             border_radius="16px",

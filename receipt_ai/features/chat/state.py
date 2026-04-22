@@ -1,8 +1,10 @@
 import asyncio
+import base64
 import time
 import reflex as rx
 from typing import Any
 
+from receipt_ai.core.upload_constants import CHAT_UPLOAD_ZONE_ID
 from receipt_ai.features.auth.state import AuthState
 from receipt_ai.features.chat.rag_service import RagReply, stream_iter_next, stream_rag_chunks
 from receipt_ai.features.chat.service import (
@@ -14,6 +16,9 @@ from receipt_ai.features.chat.service import (
     list_conversation_messages,
     rename_conversation,
 )
+from receipt_ai.features.extraction.models import ExtractionRequest
+from receipt_ai.features.extraction.orchestrator import run_upload_extraction
+from receipt_ai.features.files.validation import validate_upload_filename
 from receipt_ai.features.files.state import FilesState
 
 # History rail drag: same pattern as Files explorer (rx.call_script + Promise).
@@ -45,6 +50,8 @@ return new Promise((resolve) => {
 });
 """
 
+_CHAT_UPLOAD_FILES_BY_KEY: dict[str, list[rx.UploadFile]] = {}
+
 
 class ChatState(rx.State):
     """State container for chat feature."""
@@ -68,6 +75,11 @@ class ChatState(rx.State):
     show_new_chat_confirm: bool = False
     show_delete_chat_confirm: bool = False
     pending_delete_conversation_id: str = ""
+    chat_upload_previews: list[dict[str, str]] = []
+    chat_upload_error: str = ""
+    show_chat_image_preview: bool = False
+    chat_preview_name: str = ""
+    chat_preview_url: str = ""
 
     @rx.var
     def chat_sidebar_width_css(self) -> str:
@@ -102,6 +114,140 @@ class ChatState(rx.State):
             if text:
                 previews.append(prefix + text)
         return previews
+
+    def _upload_stash_key(self) -> str:
+        router = getattr(self, "router_data", None)
+        session = getattr(router, "session", None) if router is not None else None
+        token = str(getattr(session, "client_token", "") or "").strip()
+        sid = str(getattr(session, "session_id", "") or "").strip()
+        route = str(getattr(router, "route_id", "") or "").strip() if router is not None else ""
+        base = token or sid
+        if base:
+            return f"{base}:{route}" if route else base
+        return f"chat-state:{id(self)}"
+
+    def _stash_set_chat_files(self, files: list[rx.UploadFile]) -> None:
+        _CHAT_UPLOAD_FILES_BY_KEY[self._upload_stash_key()] = list(files)
+
+    def _stash_get_chat_files(self) -> list[rx.UploadFile]:
+        return list(_CHAT_UPLOAD_FILES_BY_KEY.get(self._upload_stash_key(), []))
+
+    def _stash_clear_chat_files(self) -> None:
+        _CHAT_UPLOAD_FILES_BY_KEY.pop(self._upload_stash_key(), None)
+
+    async def cache_chat_upload_previews(self, files: list[rx.UploadFile]) -> None:
+        """Build local image previews for chat attachments (user-only)."""
+        auth = await self.get_state(AuthState)
+        if not auth.is_standard_user or not auth.can_chat_image_upload:
+            self.chat_upload_error = "Chat attachment upload is available for user role only."
+            self.chat_upload_previews = []
+            self._stash_clear_chat_files()
+            return
+        previews: list[dict[str, str]] = []
+        filtered_files: list[rx.UploadFile] = []
+        self.chat_upload_error = ""
+        for file in files[:3]:
+            filename = str(getattr(file, "filename", "") or "").strip()
+            if not filename:
+                continue
+            validation_error = validate_upload_filename(filename)
+            if validation_error:
+                self.chat_upload_error = validation_error
+                continue
+            lowered = filename.lower()
+            if not lowered.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif")):
+                self.chat_upload_error = "Only image files are supported in chat attachments."
+                continue
+            try:
+                await file.seek(0)
+                file_bytes = await file.read()
+                await file.seek(0)
+                ext = lowered.rsplit(".", 1)[-1] if "." in lowered else "png"
+                mime = "image/jpeg" if ext in {"jpg", "jpeg", "jfif"} else f"image/{ext}"
+                encoded = base64.b64encode(file_bytes).decode("ascii")
+                preview_url = f"data:{mime};base64,{encoded}"
+                previews.append({"name": filename, "preview_url": preview_url})
+                filtered_files.append(file)
+            except Exception:
+                self.chat_upload_error = f"Preview unavailable for '{filename}'."
+        self.chat_upload_previews = previews
+        if filtered_files:
+            self._stash_set_chat_files(filtered_files)
+        else:
+            self._stash_clear_chat_files()
+
+    def clear_chat_upload_selection(self):
+        self.chat_upload_previews = []
+        self.chat_upload_error = ""
+        self.show_chat_image_preview = False
+        self.chat_preview_name = ""
+        self.chat_preview_url = ""
+        self._stash_clear_chat_files()
+        return rx.clear_selected_files(CHAT_UPLOAD_ZONE_ID)
+
+    def remove_chat_upload_preview(self, filename: str) -> None:
+        """Remove one queued chat attachment by filename."""
+        target = (filename or "").strip()
+        if not target:
+            return
+        self.chat_upload_previews = [row for row in self.chat_upload_previews if row.get("name", "") != target]
+        if self.chat_preview_name == target:
+            self.show_chat_image_preview = False
+            self.chat_preview_name = ""
+            self.chat_preview_url = ""
+        keep = [f for f in self._stash_get_chat_files() if str(getattr(f, "filename", "") or "").strip() != target]
+        if keep:
+            self._stash_set_chat_files(keep)
+        else:
+            self._stash_clear_chat_files()
+
+    def open_chat_image_preview(self, filename: str) -> None:
+        target = (filename or "").strip()
+        if not target:
+            return
+        row = next((item for item in self.chat_upload_previews if item.get("name", "") == target), None)
+        if not row:
+            return
+        preview_url = str(row.get("preview_url", "") or "").strip()
+        if not preview_url:
+            return
+        self.chat_preview_name = target
+        self.chat_preview_url = preview_url
+        self.show_chat_image_preview = True
+
+    def close_chat_image_preview(self) -> None:
+        self.show_chat_image_preview = False
+        self.chat_preview_name = ""
+        self.chat_preview_url = ""
+
+    async def _extract_chat_attachment_context(self) -> tuple[str, list[str]]:
+        """Extract text from queued image attachments for prompt context."""
+        files = self._stash_get_chat_files()
+        if not files:
+            return ("", [])
+        chunks: list[str] = []
+        names: list[str] = []
+        for file in files[:3]:
+            filename = str(getattr(file, "filename", "") or "").strip()
+            if not filename:
+                continue
+            await file.seek(0)
+            file_bytes = await file.read()
+            await file.seek(0)
+            result = await run_upload_extraction(
+                ExtractionRequest(
+                    filename=filename,
+                    content_type=getattr(file, "content_type", None),
+                    file_bytes=file_bytes,
+                    storage_folder="chat_uploads",
+                )
+            )
+            if result.status == "success" and result.text.strip():
+                names.append(filename)
+                chunks.append(f"Attachment: {filename}\n{result.text.strip()}")
+        if not chunks:
+            return ("", names)
+        return ("\n\n".join(chunks), names)
 
     async def load_history(self) -> None:
         auth = await self.get_state(AuthState)
@@ -257,15 +403,40 @@ class ChatState(rx.State):
             ]
             yield self.scroll_chat_to_latest()
             return
+        if self._stash_get_chat_files() and (not auth.is_standard_user or not auth.can_chat_image_upload):
+            self.rag_busy = False
+            self.streaming_text = ""
+            self.messages = [
+                *self.messages,
+                {
+                    "role": "assistant",
+                    "content": "Access denied: chat image upload permission is required.",
+                    "mode": "normal",
+                    "is_error": "1",
+                    "sources": [],
+                    "sources_count": 0,
+                    "sources_preview": "",
+                },
+            ]
+            yield self.scroll_chat_to_latest()
+            return
+
+        attachment_context, attachment_names = await self._extract_chat_attachment_context()
+        request_message = clipped
+        if attachment_context:
+            request_message = f"{clipped}\n\n[Attached image extraction context]\n{attachment_context}"
+        ui_message = clipped
+        if attachment_names:
+            ui_message = f"{clipped}\n\n[Attached: {', '.join(attachment_names)}]"
 
         if not self.active_conversation_id:
             self.active_conversation_id = await create_conversation(auth.user_id, title=clipped[:80])
             self.sidebar_threads = await list_chat_payload(auth.user_id)
 
-        await append_message(self.active_conversation_id, role="user", content=clipped)
+        await append_message(self.active_conversation_id, role="user", content=ui_message)
         self.messages = [
             *self.messages,
-            {"role": "user", "content": clipped, "sources": [], "sources_count": 0, "sources_preview": ""},
+            {"role": "user", "content": ui_message, "sources": [], "sources_count": 0, "sources_preview": ""},
         ]
         self.draft_message = ""
         try:
@@ -279,7 +450,7 @@ class ChatState(rx.State):
                     file_exact = f"{folder_key}/{files.selected_child_file_name}"
             mode = self.chat_mode
             gen = stream_rag_chunks(
-                clipped,
+                request_message,
                 folder_storage_key=folder_key,
                 file_key_exact=file_exact,
                 chat_mode=mode,
@@ -319,7 +490,7 @@ class ChatState(rx.State):
                 self.sidebar_threads = await list_chat_payload(auth.user_id)
             self._push_assistant_message(reply)
             if reply.error and reply.retryable:
-                self.last_failed_prompt = clipped
+                self.last_failed_prompt = request_message
                 self.last_failed_mode = mode
                 self.last_failed_folder_key = folder_key or ""
                 self.last_failed_file_key = file_exact or ""
@@ -332,6 +503,12 @@ class ChatState(rx.State):
         finally:
             self.rag_busy = False
             self.streaming_text = ""
+            self.chat_upload_previews = []
+            self.chat_upload_error = ""
+            self.show_chat_image_preview = False
+            self.chat_preview_name = ""
+            self.chat_preview_url = ""
+            self._stash_clear_chat_files()
 
     async def retry_last_turn(self):
         prompt = self.last_failed_prompt.strip()

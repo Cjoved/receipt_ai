@@ -47,6 +47,14 @@ class AuthState(rx.State):
     def is_admin(self) -> bool:
         return self.has_role("admin")
 
+    @rx.var
+    def is_standard_user(self) -> bool:
+        return self.has_role("user") and not self.has_role("admin")
+
+    @rx.var
+    def can_chat_image_upload(self) -> bool:
+        return self.has_permission("chat:image_upload")
+
     def toggle_show_password(self) -> None:
         self.show_password = not self.show_password
 
