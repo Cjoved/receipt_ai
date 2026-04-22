@@ -62,7 +62,7 @@ def seed_admin() -> None:
         raise RuntimeError(pw_error)
 
     display_name = os.getenv("SEED_ADMIN_DISPLAY_NAME", "Admin").strip() or "Admin"
-    user = asyncio.run(upsert_user(email, password, display_name=display_name))
+    user = asyncio.run(upsert_user(email, password, display_name=display_name, role_names=("admin",)))
     print(f"Seeded admin user (dev-only): {user.email} ({user.display_name})")
 
 
