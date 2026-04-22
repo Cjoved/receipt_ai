@@ -23,6 +23,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_pdf_extraction_mode() -> str:
+    raw = os.getenv("PDF_EXTRACTION_MODE", "auto").strip().lower()
+    if raw in {"auto", "text", "vision"}:
+        return raw
+    return "auto"
+
+
 @dataclass(frozen=True)
 class ExtractionConfig:
     enable_on_upload: bool = True
@@ -54,6 +61,11 @@ class ExtractionConfig:
     qdrant_url: str = ""
     qdrant_api_key: str = ""
     qdrant_collection: str = "receipt_chunks"
+    # PDF: auto tries pypdf text first; falls back to per-page Kimi vision when text is short.
+    pdf_extraction_mode: str = "auto"
+    pdf_auto_min_text_chars: int = 120
+    pdf_render_dpi: int = 200
+    pdf_max_pages: int = 40
 
     @classmethod
     def from_env(cls) -> "ExtractionConfig":
@@ -92,4 +104,8 @@ class ExtractionConfig:
             qdrant_url=os.getenv("QDRANT_URL", "").strip(),
             qdrant_api_key=os.getenv("QDRANT_API_KEY", "").strip(),
             qdrant_collection=os.getenv("QDRANT_COLLECTION", "receipt_chunks").strip() or "receipt_chunks",
+            pdf_extraction_mode=_env_pdf_extraction_mode(),
+            pdf_auto_min_text_chars=_env_int("PDF_AUTO_MIN_TEXT_CHARS", 120),
+            pdf_render_dpi=max(72, _env_int("PDF_RENDER_DPI", 200)),
+            pdf_max_pages=max(1, _env_int("PDF_MAX_PAGES", 40)),
         )
