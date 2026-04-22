@@ -38,6 +38,7 @@ class ChunkRetriever:
         top_k: int | None = None,
         folder_prefix: str | None = None,
         file_key_exact: str | None = None,
+        file_type_exact: str | None = None,
     ) -> list[RetrievedChunk]:
         k = top_k if top_k is not None else max(1, self._config.rag_top_k)
         query = query.strip()
@@ -50,6 +51,7 @@ class ChunkRetriever:
                 top_k=k,
                 folder_prefix=folder_prefix,
                 file_key_exact=file_key_exact,
+                file_type_exact=file_type_exact,
             )
 
         all_chunks = load_all_chunk_records(self._index_root)
@@ -62,6 +64,10 @@ class ChunkRetriever:
             elif folder_prefix is not None and folder_prefix != "":
                 prefix = folder_prefix.rstrip("/") + "/"
                 if not ch.file_key.startswith(prefix):
+                    continue
+            if file_type_exact:
+                chunk_file_type = str(ch.metadata.get("file_type", ch.metadata.get("doc_type", ""))).strip().lower()
+                if chunk_file_type != file_type_exact.strip().lower():
                     continue
             candidates.append(ch)
 
@@ -100,9 +106,14 @@ class ChunkRetriever:
         top_k: int,
         folder_prefix: str | None,
         file_key_exact: str | None,
+        file_type_exact: str | None,
     ) -> list[RetrievedChunk]:
         """Semantic search via LangChain `QdrantVectorStore.similarity_search_with_score`."""
-        q_filter = build_qdrant_filter(folder_prefix=folder_prefix, file_key_exact=file_key_exact)
+        q_filter = build_qdrant_filter(
+            folder_prefix=folder_prefix,
+            file_key_exact=file_key_exact,
+            file_type_exact=file_type_exact,
+        )
         store, _ = get_qdrant_vector_store(self._config, self._embedder)
         pairs = store.similarity_search_with_score(query, k=top_k, filter=q_filter)
         out: list[RetrievedChunk] = []

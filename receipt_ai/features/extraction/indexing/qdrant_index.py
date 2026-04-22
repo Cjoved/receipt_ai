@@ -59,16 +59,16 @@ def get_qdrant_vector_store(
     return store, client
 
 
-def delete_points_for_file_key(client: QdrantClient, collection_name: str, file_key: str) -> None:
-    """Remove all points whose LangChain payload metadata matches `file_key` (re-index)."""
+def delete_points_for_document_key(client: QdrantClient, collection_name: str, document_key: str) -> None:
+    """Remove all points for one uploaded document (covers page-scoped keys too)."""
     client.delete(
         collection_name=collection_name,
         points_selector=models.FilterSelector(
             filter=models.Filter(
                 must=[
                     models.FieldCondition(
-                        key="metadata.file_key",
-                        match=models.MatchValue(value=file_key),
+                        key="metadata.document_key",
+                        match=models.MatchValue(value=document_key),
                     )
                 ]
             )
@@ -86,24 +86,37 @@ def upsert_chunks_for_file(
     if not chunks:
         return
     store, client = get_qdrant_vector_store(config, embed_provider)
-    delete_points_for_file_key(client, config.qdrant_collection, request.file_key)
+    delete_points_for_document_key(client, config.qdrant_collection, request.file_key)
 
     documents: list[Document] = []
     ids: list[str] = []
     for ch in chunks:
+        page_index = ch.metadata.get("page_index")
+        try:
+            page_index_val = int(page_index) if page_index is not None else None
+        except (TypeError, ValueError):
+            page_index_val = None
+        uploaded_at = ch.metadata.get("created_at")
         documents.append(
             Document(
                 page_content=ch.content,
                 metadata={
-                    "file_key": request.file_key,
+                    "file_key": ch.file_key,
+                    "document_key": request.file_key,
+                    "page_key": ch.metadata.get("page_key"),
                     "folder": request.folder,
                     "source_name": request.filename,
+                    "file_type": request.doc_type,
                     "chunk_index": ch.chunk_index,
                     "section_type": ch.section_type,
+                    "page_index": page_index_val,
+                    "uploaded_at": uploaded_at,
+                    "uploaded_epoch": ch.metadata.get("uploaded_epoch"),
+                    "indexed_at": uploaded_at,
                 },
             )
         )
-        ids.append(str(uuid.uuid5(uuid.NAMESPACE_URL, f"{request.file_key}:{ch.chunk_index}")))
+        ids.append(str(uuid.uuid5(uuid.NAMESPACE_URL, f"{ch.file_key}:{ch.chunk_index}")))
 
     store.add_documents(documents=documents, ids=ids)
     logger.info(
@@ -118,27 +131,34 @@ def build_qdrant_filter(
     *,
     folder_prefix: str | None,
     file_key_exact: str | None,
+    file_type_exact: str | None = None,
 ) -> models.Filter | None:
     """Filter for LangChain / Qdrant semantic search (folder or single file)."""
+    must: list[models.FieldCondition] = []
     if file_key_exact:
-        return models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="metadata.file_key",
-                    match=models.MatchValue(value=file_key_exact),
-                )
-            ]
+        must.append(
+            models.FieldCondition(
+                key="metadata.file_key",
+                match=models.MatchValue(value=file_key_exact),
+            )
         )
-    if folder_prefix and folder_prefix.strip():
-        return models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="metadata.folder",
-                    match=models.MatchValue(value=folder_prefix.strip()),
-                )
-            ]
+    elif folder_prefix and folder_prefix.strip():
+        must.append(
+            models.FieldCondition(
+                key="metadata.folder",
+                match=models.MatchValue(value=folder_prefix.strip()),
+            )
         )
-    return None
+    if file_type_exact and file_type_exact.strip():
+        must.append(
+            models.FieldCondition(
+                key="metadata.file_type",
+                match=models.MatchValue(value=file_type_exact.strip().lower()),
+            )
+        )
+    if not must:
+        return None
+    return models.Filter(must=must)
 
 
 def get_langchain_retriever(

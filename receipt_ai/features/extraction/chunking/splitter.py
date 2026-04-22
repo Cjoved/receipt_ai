@@ -31,6 +31,10 @@ def build_chunks(payload: ChunkBuildInput, config: ExtractionConfig) -> list[Chu
     idx = 0
 
     for segment in payload.segments:
+        if segment.page_index is not None:
+            chunk_file_key = f"{payload.file_key}::p{segment.page_index}"
+        else:
+            chunk_file_key = payload.file_key
         texts = splitter.split_text(segment.content)
         for piece in texts:
             stripped = piece.strip()
@@ -43,9 +47,10 @@ def build_chunks(payload: ChunkBuildInput, config: ExtractionConfig) -> list[Chu
             char_start = running_char
             char_end = running_char + len(stripped)
             running_char = char_end + 1
+            created_at = datetime.now(UTC)
             chunks.append(
                 ChunkRecord(
-                    file_key=payload.file_key,
+                    file_key=chunk_file_key,
                     source_name=payload.source_name,
                     chunk_index=idx,
                     content=stripped,
@@ -56,7 +61,12 @@ def build_chunks(payload: ChunkBuildInput, config: ExtractionConfig) -> list[Chu
                     metadata={
                         "chunk_of": 0,
                         "doc_type": payload.doc_type,
-                        "created_at": datetime.now(UTC).isoformat(),
+                        "file_type": payload.doc_type,
+                        "document_key": payload.file_key,
+                        "page_key": chunk_file_key if segment.page_index is not None else None,
+                        "page_index": segment.page_index,
+                        "created_at": created_at.isoformat(),
+                        "uploaded_epoch": int(created_at.timestamp()),
                     },
                 )
             )

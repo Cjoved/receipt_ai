@@ -8,6 +8,7 @@ from typing import Any
 class TextSegment:
     section_type: str
     content: str
+    page_index: int | None = None
 
 
 @dataclass
