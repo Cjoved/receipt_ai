@@ -182,7 +182,10 @@ def top_nav(active_page: str) -> rx.Component:
                             class_name="nav-brand-link",
                         ),
                         rx.hstack(
-                            nav_button("Files", "/files", files_active, icon="folder"),
+                            rx.cond(
+                                AuthState.is_admin,
+                                nav_button("Files", "/files", files_active, icon="folder"),
+                            ),
                             nav_button("Chat", "/chat", chat_active, icon="message-circle"),
                             spacing="2",
                             class_name="nav-desktop-only",
@@ -205,11 +208,14 @@ def top_nav(active_page: str) -> rx.Component:
                 ),
                 rx.box(
                     rx.vstack(
-                        _mobile_nav_link(
-                            label="Files",
-                            href="/files",
-                            icon="folder",
-                            active=files_active,
+                        rx.cond(
+                            AuthState.is_admin,
+                            _mobile_nav_link(
+                                label="Files",
+                                href="/files",
+                                icon="folder",
+                                active=files_active,
+                            ),
                         ),
                         _mobile_nav_link(
                             label="Chat",

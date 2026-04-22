@@ -409,8 +409,8 @@ class FilesState(
         return folder_name
 
     # --- Event handlers defined on FilesState (safe for Reflex binding) ---
-    def load_files(self) -> None:
-        return FilesCrudActionsMixin.load_files(self)
+    async def load_files(self) -> None:
+        return await FilesCrudActionsMixin.load_files(self)
 
     def open_new_folder_input(self) -> None:
         return FilesCrudActionsMixin.open_new_folder_input(self)
@@ -421,8 +421,8 @@ class FilesState(
     def set_new_folder_name(self, value: str) -> None:
         return FilesCrudActionsMixin.set_new_folder_name(self, value)
 
-    def create_new_folder(self) -> None:
-        return FilesCrudActionsMixin.create_new_folder(self)
+    async def create_new_folder(self) -> None:
+        return await FilesCrudActionsMixin.create_new_folder(self)
 
     def open_rename_input(self) -> None:
         return FilesCrudActionsMixin.open_rename_input(self)
@@ -430,8 +430,8 @@ class FilesState(
     def set_rename_value(self, value: str) -> None:
         return FilesCrudActionsMixin.set_rename_value(self, value)
 
-    def save_rename(self) -> None:
-        return FilesCrudActionsMixin.save_rename(self)
+    async def save_rename(self) -> None:
+        return await FilesCrudActionsMixin.save_rename(self)
 
     def cancel_rename(self) -> None:
         return FilesCrudActionsMixin.cancel_rename(self)
@@ -442,8 +442,8 @@ class FilesState(
     def cancel_rename_confirm(self) -> None:
         return FilesCrudActionsMixin.cancel_rename_confirm(self)
 
-    def delete_file(self) -> None:
-        return FilesCrudActionsMixin.delete_file(self)
+    async def delete_file(self) -> None:
+        return await FilesCrudActionsMixin.delete_file(self)
 
     def request_delete_confirm(self) -> None:
         return FilesCrudActionsMixin.request_delete_confirm(self)
@@ -454,14 +454,14 @@ class FilesState(
     def cancel_delete_confirm(self) -> None:
         return FilesCrudActionsMixin.cancel_delete_confirm(self)
 
-    def confirm_delete(self) -> None:
-        return FilesCrudActionsMixin.confirm_delete(self)
+    async def confirm_delete(self) -> None:
+        return await FilesCrudActionsMixin.confirm_delete(self)
 
-    def delete_child_file(self, filename: str) -> None:
-        return FilesCrudActionsMixin.delete_child_file(self, filename)
+    async def delete_child_file(self, filename: str) -> None:
+        return await FilesCrudActionsMixin.delete_child_file(self, filename)
 
-    def toggle_folder(self, folder_name: str) -> None:
-        return FilesCrudActionsMixin.toggle_folder(self, folder_name)
+    async def toggle_folder(self, folder_name: str) -> None:
+        return await FilesCrudActionsMixin.toggle_folder(self, folder_name)
 
     def set_grid_view(self) -> None:
         return FilesCrudActionsMixin.set_grid_view(self)

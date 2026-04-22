@@ -6,6 +6,7 @@ from receipt_ai.core.upload_constants import (
     FILES_PANEL_UPLOAD_ZONE_ID,
     FILES_UPLOAD_ZONE_ID,
 )
+from receipt_ai.features.auth.state import AuthState
 from receipt_ai.features.extraction.indexing import IndexingRequest
 from receipt_ai.features.extraction.jobs import enqueue_uploaded_document
 from receipt_ai.features.extraction.models import ExtractionRequest
@@ -70,6 +71,13 @@ class FilesUploadActionsMixin:
 
     def _stash_clear_panel_files(self) -> None:
         _PANEL_UPLOAD_FILES_BY_KEY.pop(self._upload_stash_key(), None)
+
+    async def _ensure_files_write_permission(self) -> bool:
+        auth = await self.get_state(AuthState)
+        if auth.has_permission("files:write"):
+            return True
+        self.upload_error = "Access denied: admin Files write access is required."
+        return False
 
     # Open upload modal from the upload icon button.
     def open_upload_input(self) -> None:
@@ -175,6 +183,10 @@ class FilesUploadActionsMixin:
 
     async def run_confirmed_queue_upload(self):
         """Execute modal upload with streamed UI updates (progress + stage text)."""
+        if not await self._ensure_files_write_permission():
+            self._reset_upload_loading_state()
+            yield rx.toast.error(self.upload_error)
+            return
         files = list(_MODAL_UPLOAD_FILES_BY_KEY.get(self._upload_stash_key(), []))
         if not self.expanded_folder_name:
             self.upload_error = "Please open a folder first."
@@ -452,10 +464,14 @@ class FilesUploadActionsMixin:
 
     async def upload_panel_drop(self, files: list[rx.UploadFile]) -> rx.event.EventSpec | None:
         """Direct upload from main panel drop zone (Technical AI right-panel pattern)."""
+        if not await self._ensure_files_write_permission():
+            return rx.toast.error(self.upload_error)
         return await self._upload_to_open_folder(files, FILES_PANEL_UPLOAD_ZONE_ID, use_skip_list=False)
 
     async def upload_files(self, files: list[rx.UploadFile]) -> rx.event.EventSpec | None:
         """Upload from modal queue after confirmation (honours excluded_upload_names)."""
+        if not await self._ensure_files_write_permission():
+            return rx.toast.error(self.upload_error)
         return await self._upload_to_open_folder(files, FILES_UPLOAD_ZONE_ID, use_skip_list=True)
 
     async def _upload_to_open_folder(

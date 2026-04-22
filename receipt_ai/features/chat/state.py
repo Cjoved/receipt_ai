@@ -105,7 +105,7 @@ class ChatState(rx.State):
 
     async def load_history(self) -> None:
         auth = await self.get_state(AuthState)
-        if not auth.user_id:
+        if not auth.user_id or not auth.has_permission("chat:read"):
             self.sidebar_threads = []
             self.active_conversation_id = ""
             self.messages = []
@@ -231,6 +231,23 @@ class ChatState(rx.State):
                 {
                     "role": "assistant",
                     "content": "Please sign in first.",
+                    "mode": "normal",
+                    "is_error": "1",
+                    "sources": [],
+                    "sources_count": 0,
+                    "sources_preview": "",
+                },
+            ]
+            yield self.scroll_chat_to_latest()
+            return
+        if not auth.has_permission("chat:write"):
+            self.rag_busy = False
+            self.streaming_text = ""
+            self.messages = [
+                *self.messages,
+                {
+                    "role": "assistant",
+                    "content": "Access denied: chat write permission is required.",
                     "mode": "normal",
                     "is_error": "1",
                     "sources": [],

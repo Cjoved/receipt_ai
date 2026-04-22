@@ -1,5 +1,6 @@
 import reflex as rx
 
+from receipt_ai.features.auth.state import AuthState
 from receipt_ai.features.files.validation import (
     duplicate_name_error,
     normalize_item_name,
@@ -72,9 +73,32 @@ class FilesCrudActionsMixin:
             return
         self.rename_save_btn_enabled = False
 
+    async def _ensure_files_read_permission(self) -> bool:
+        auth = await self.get_state(AuthState)
+        if auth.has_permission("files:read"):
+            return True
+        self.upload_error = "Access denied: admin Files access is required."
+        return False
+
+    async def _ensure_files_write_permission(self) -> bool:
+        auth = await self.get_state(AuthState)
+        if auth.has_permission("files:write"):
+            return True
+        self.upload_error = "Access denied: admin Files write access is required."
+        return False
+
     # Reload list from the service layer (used on page load).
-    def load_files(self) -> None:
+    async def load_files(self) -> None:
         """Load files from wasabi and reflect them in the explorer list."""
+        if not await self._ensure_files_read_permission():
+            self.files = []
+            self.folder_children = {}
+            self.expanded_folder_name = ""
+            self.selected_file_name = ""
+            self.selected_child_file_name = ""
+            self._clear_preview_state()
+            self.upload_error = "Access denied: admin Files access is required."
+            return
         try:
             storage = self._get_storage()
             folder_names = storage.list_folders()
@@ -120,8 +144,10 @@ class FilesCrudActionsMixin:
         self._sync_create_folder_button()
 
     # Add a new folder entry to the in-memory file list.
-    def create_new_folder(self) -> None:
+    async def create_new_folder(self) -> None:
         """Create a new folder in Wasabi and reflect it in the explorer list."""
+        if not await self._ensure_files_write_permission():
+            return rx.toast.error(self.upload_error)
         new_folder_name = normalize_item_name(self.new_folder_name)
         base_error = validate_item_name(new_folder_name, kind="folder")
         if base_error:
@@ -175,8 +201,10 @@ class FilesCrudActionsMixin:
         self._sync_rename_save_button()
 
     # Persist rename change into the selected list item.
-    def save_rename(self) -> None:
+    async def save_rename(self) -> None:
         """Rename selected file or folder in wasabi and sync local state"""
+        if not await self._ensure_files_write_permission():
+            return rx.toast.error(self.upload_error)
         new_name = normalize_item_name(self.rename_value)
 
         try:
@@ -273,8 +301,10 @@ class FilesCrudActionsMixin:
         self.show_rename_confirm = False
 
     # Delete currently selected file or folder and sync UI state.
-    def delete_file(self) -> None:
+    async def delete_file(self) -> None:
         """Delete selected file in the open folder, or the whole folder if none selected."""
+        if not await self._ensure_files_write_permission():
+            return rx.toast.error(self.upload_error)
         if not self.expanded_folder_name:
             return
 
@@ -330,14 +360,16 @@ class FilesCrudActionsMixin:
         """Close delete confirmation modal without deleting."""
         self.show_delete_confirm = False
 
-    def confirm_delete(self) -> None:
+    async def confirm_delete(self) -> None:
         """Confirm destructive delete action."""
-        result = self.delete_file()
+        result = await self.delete_file()
         self.show_delete_confirm = False
         return result
 
-    def delete_child_file(self, filename: str) -> None:
+    async def delete_child_file(self, filename: str) -> None:
         """Delete one specific child file from current folder (row action)."""
+        if not await self._ensure_files_write_permission():
+            return rx.toast.error(self.upload_error)
         if not self.expanded_folder_name:
             return
         try:
@@ -354,8 +386,10 @@ class FilesCrudActionsMixin:
             return rx.toast.error(f"Failed to delete file: {e}")
 
     # Toggle the expansion state of a folder.
-    def toggle_folder(self, folder_name: str) -> None:
+    async def toggle_folder(self, folder_name: str) -> None:
         """Toggle the expansion state of a folder."""
+        if not await self._ensure_files_read_permission():
+            return rx.toast.error(self.upload_error)
         if self.expanded_folder_name == folder_name:
             self.expanded_folder_name = ""
             self.selected_file_name = ""
