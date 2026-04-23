@@ -43,7 +43,7 @@ def create_app() -> rx.App:
         route="/files",
         title="Receipt AI — Files",
         description="Browse and manage receipts and documents in your workspace.",
-        on_load=[AuthState.guard_protected_route, AuthState.guard_admin_route, FilesState.load_files],
+        on_load=[AuthState.guard_admin_route, FilesState.load_files],
     )
     app.add_page(
         chat_page,

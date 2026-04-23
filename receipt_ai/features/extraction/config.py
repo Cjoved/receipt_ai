@@ -57,6 +57,10 @@ class ExtractionConfig:
     deepseek_reasoning_model: str = "deepseek-reasoner"
     deepseek_timeout_seconds: int = 60
     rag_top_k: int = 8
+    rag_broad_top_k: int = 40
+    rag_enable_broad_aggregate_mode: bool = False
+    rag_enable_neighbor_expansion: bool = False
+    rag_enable_broad_rerank: bool = False
     # Optional: set QDRANT_URL (e.g. http://localhost:6333) to index + retrieve via Qdrant + LangChain.
     qdrant_url: str = ""
     qdrant_api_key: str = ""
@@ -64,8 +68,10 @@ class ExtractionConfig:
     # PDF: auto tries pypdf text first; falls back to per-page Kimi vision when text is short.
     pdf_extraction_mode: str = "auto"
     pdf_auto_min_text_chars: int = 120
-    pdf_render_dpi: int = 200
+    pdf_render_dpi: int = 260
     pdf_max_pages: int = 40
+    pdf_retry_pages: int = 1
+    pdf_retry_dpi_step: int = 40
 
     @classmethod
     def from_env(cls) -> "ExtractionConfig":
@@ -101,11 +107,17 @@ class ExtractionConfig:
             ),
             deepseek_timeout_seconds=_env_int("DEEPSEEK_TIMEOUT_SECONDS", _env_int("KIMI_TIMEOUT_SECONDS", 60)),
             rag_top_k=_env_int("RAG_TOP_K", 8),
+            rag_broad_top_k=max(8, _env_int("RAG_BROAD_TOP_K", 40)),
+            rag_enable_broad_aggregate_mode=_env_bool("RAG_ENABLE_BROAD_AGGREGATE_MODE", False),
+            rag_enable_neighbor_expansion=_env_bool("RAG_ENABLE_NEIGHBOR_EXPANSION", False),
+            rag_enable_broad_rerank=_env_bool("RAG_ENABLE_BROAD_RERANK", False),
             qdrant_url=os.getenv("QDRANT_URL", "").strip(),
             qdrant_api_key=os.getenv("QDRANT_API_KEY", "").strip(),
             qdrant_collection=os.getenv("QDRANT_COLLECTION", "receipt_chunks").strip() or "receipt_chunks",
             pdf_extraction_mode=_env_pdf_extraction_mode(),
             pdf_auto_min_text_chars=_env_int("PDF_AUTO_MIN_TEXT_CHARS", 120),
-            pdf_render_dpi=max(72, _env_int("PDF_RENDER_DPI", 200)),
+            pdf_render_dpi=max(72, _env_int("PDF_RENDER_DPI", 260)),
             pdf_max_pages=max(1, _env_int("PDF_MAX_PAGES", 40)),
+            pdf_retry_pages=max(0, _env_int("PDF_RETRY_PAGES", 1)),
+            pdf_retry_dpi_step=max(10, _env_int("PDF_RETRY_DPI_STEP", 40)),
         )
