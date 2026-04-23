@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 from receipt_ai.features.extraction.adapters.pdf_extractor import PdfExtractor
 from receipt_ai.features.extraction.config import ExtractionConfig
-from receipt_ai.features.extraction.errors import ExternalAIError
 from receipt_ai.features.extraction.models import ExtractionRequest
 
 
@@ -62,7 +61,7 @@ class PdfExtractorTests(unittest.TestCase):
         self.assertIn("--- Page 1 ---", out)
         self.assertIn("Merchant ABC", out)
 
-    def test_vision_all_pages_skipped_raises(self) -> None:
+    def test_vision_emits_skip_placeholders_when_no_page_text(self) -> None:
         config = ExtractionConfig(
             kimi_api_key="sk-test",
             pdf_extraction_mode="vision",
@@ -76,9 +75,50 @@ class PdfExtractorTests(unittest.TestCase):
             "receipt_ai.features.extraction.adapters.pdf_extractor.kimi_try_receipt_page",
             return_value=(None, "not_receipt"),
         ):
-            with self.assertRaises(ExternalAIError) as ctx:
-                ext.extract(req)
-        self.assertIn("No usable receipt text", str(ctx.exception))
+            out = ext.extract(req)
+        self.assertIn("--- Page 1 ---", out)
+        self.assertIn("[Extraction skipped: not_receipt]", out)
+        self.assertIn("--- Page 2 ---", out)
+        self.assertEqual(ext.name, "kimi-vision-pdf")
+
+    def test_vision_passes_relax_flag_to_kimi(self) -> None:
+        config = ExtractionConfig(
+            kimi_api_key="sk-test",
+            pdf_extraction_mode="vision",
+        )
+        ext = PdfExtractor(config)
+        req = _pdf_request()
+        with patch(
+            "receipt_ai.features.extraction.adapters.pdf_extractor.render_pdf_pages_to_png_bytes",
+            return_value=[b"png1"],
+        ), patch(
+            "receipt_ai.features.extraction.adapters.pdf_extractor.kimi_try_receipt_page",
+            return_value=("Total 1.00 date today", None),
+        ) as kimi_mock:
+            ext.extract(req)
+        kwargs = kimi_mock.call_args.kwargs
+        self.assertTrue(kwargs.get("relax_receipt_validation"))
+
+    def test_vision_retry_recovers_skipped_page(self) -> None:
+        config = ExtractionConfig(
+            kimi_api_key="sk-test",
+            pdf_extraction_mode="vision",
+            pdf_retry_pages=1,
+            pdf_retry_dpi_step=50,
+        )
+        ext = PdfExtractor(config)
+        req = _pdf_request()
+        with patch(
+            "receipt_ai.features.extraction.adapters.pdf_extractor.render_pdf_pages_to_png_bytes",
+            side_effect=[[b"png1"], [b"png1r"]],
+        ), patch(
+            "receipt_ai.features.extraction.adapters.pdf_extractor.kimi_try_receipt_page",
+            side_effect=[(None, "not_receipt"), ("merchant: x\ntotal: 10", None)],
+        ):
+            out = ext.extract(req)
+        self.assertIn("merchant: x", out)
+        self.assertEqual(ext.last_vision_stats["pages_total"], 1)
+        self.assertEqual(ext.last_vision_stats["pages_skipped"], 0)
 
     def test_text_mode_skips_vision(self) -> None:
         config = ExtractionConfig(

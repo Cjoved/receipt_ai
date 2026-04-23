@@ -165,6 +165,95 @@ class RetrieverTests(unittest.TestCase):
                 hits = r.retrieve("q", file_key_exact="folder/a.txt")
                 self.assertEqual(len(hits), 1)
 
+    def test_retrieve_file_key_exact_matches_document_key_for_paged_pdf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = ExtractionConfig(index_output_dir=tmp)
+            p = __import__("pathlib").Path(tmp) / "f"
+            p.mkdir()
+            fp = p / "a.chunks.json"
+            fp.write_text(
+                json.dumps(
+                    [
+                        {
+                            "file_key": "folder/a.pdf::p1",
+                            "source_name": "a.pdf",
+                            "chunk_index": 0,
+                            "content": "page one",
+                            "token_count_est": 2,
+                            "char_start": 0,
+                            "char_end": 8,
+                            "section_type": "text",
+                            "metadata": {"document_key": "folder/a.pdf", "page_index": 1},
+                            "embedding": [1.0, 0.0],
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch("receipt_ai.features.extraction.retrieval.retriever.FastEmbedProvider") as fe_cls:
+                fe_cls.return_value.embed_query.return_value = [1.0, 0.0]
+                r = ChunkRetriever(cfg)
+                hits = r.retrieve("q", file_key_exact="folder/a.pdf")
+                self.assertEqual(len(hits), 1)
+                self.assertEqual(hits[0].file_key, "folder/a.pdf::p1")
+
+    def test_retrieve_neighbor_expansion_adds_adjacent_chunk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = ExtractionConfig(index_output_dir=tmp, rag_top_k=3, rag_enable_neighbor_expansion=True)
+            p = __import__("pathlib").Path(tmp) / "f"
+            p.mkdir()
+            fp = p / "a.chunks.json"
+            fp.write_text(
+                json.dumps(
+                    [
+                        {
+                            "file_key": "folder/a.pdf::p1",
+                            "source_name": "a.pdf",
+                            "chunk_index": 0,
+                            "content": "header",
+                            "token_count_est": 1,
+                            "char_start": 0,
+                            "char_end": 6,
+                            "section_type": "text",
+                            "metadata": {"document_key": "folder/a.pdf"},
+                            "embedding": [0.7, 0.7],
+                        },
+                        {
+                            "file_key": "folder/a.pdf::p1",
+                            "source_name": "a.pdf",
+                            "chunk_index": 1,
+                            "content": "target chunk",
+                            "token_count_est": 2,
+                            "char_start": 7,
+                            "char_end": 18,
+                            "section_type": "text",
+                            "metadata": {"document_key": "folder/a.pdf"},
+                            "embedding": [1.0, 0.0],
+                        },
+                        {
+                            "file_key": "folder/a.pdf::p1",
+                            "source_name": "a.pdf",
+                            "chunk_index": 2,
+                            "content": "neighbor chunk",
+                            "token_count_est": 2,
+                            "char_start": 19,
+                            "char_end": 32,
+                            "section_type": "text",
+                            "metadata": {"document_key": "folder/a.pdf"},
+                            "embedding": [0.2, 0.98],
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch("receipt_ai.features.extraction.retrieval.retriever.FastEmbedProvider") as fe_cls:
+                fe_cls.return_value.embed_query.return_value = [1.0, 0.0]
+                r = ChunkRetriever(cfg)
+                hits = r.retrieve("q", top_k=3, expand_neighbors=True)
+                contents = {h.content for h in hits}
+                self.assertIn("target chunk", contents)
+                self.assertIn("neighbor chunk", contents)
+
 
 if __name__ == "__main__":
     unittest.main()
