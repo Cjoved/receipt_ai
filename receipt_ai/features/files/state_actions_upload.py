@@ -18,6 +18,8 @@ from receipt_ai.features.files.validation import normalize_item_name, validate_u
 # after `confirm_upload_from_queue` chains to `run_confirmed_queue_upload`.
 _MODAL_UPLOAD_FILES_BY_KEY: dict[str, list[rx.UploadFile]] = {}
 _PANEL_UPLOAD_FILES_BY_KEY: dict[str, list[rx.UploadFile]] = {}
+_PREVIEW_MAX_BYTES = 1_500_000
+_PREVIEW_PDF_MAX_PAGES = 6
 
 
 class FilesUploadActionsMixin:
@@ -385,7 +387,7 @@ class FilesUploadActionsMixin:
             if not filename:
                 continue
             lowered = filename.lower()
-            is_image = lowered.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"))
+            is_image = lowered.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"))
             is_pdf = lowered.endswith(".pdf")
             preview_url = ""
             preview_kind = "file"
@@ -397,11 +399,10 @@ class FilesUploadActionsMixin:
                     ext = lowered.rsplit(".", 1)[-1] if "." in lowered else "png"
                     if ext in {"jpg", "jpeg"}:
                         mime = "image/jpeg"
-                    elif ext == "svg":
-                        mime = "image/svg+xml"
                     else:
                         mime = f"image/{ext}"
-                    encoded = base64.b64encode(file_bytes).decode("ascii")
+                    limited_bytes = file_bytes if len(file_bytes) <= _PREVIEW_MAX_BYTES else file_bytes[:_PREVIEW_MAX_BYTES]
+                    encoded = base64.b64encode(limited_bytes).decode("ascii")
                     preview_url = f"data:{mime};base64,{encoded}"
                     preview_kind = "image"
                 except Exception:
@@ -415,12 +416,13 @@ class FilesUploadActionsMixin:
                     doc = fitz.open(stream=file_bytes, filetype="pdf")
                     if doc.page_count > 0:
                         page_urls: list[str] = []
-                        total_pages = min(doc.page_count, 12)
+                        total_pages = min(doc.page_count, _PREVIEW_PDF_MAX_PAGES)
                         for page_index in range(total_pages):
                             page = doc.load_page(page_index)
-                            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+                            pix = page.get_pixmap(matrix=fitz.Matrix(1.1, 1.1), alpha=False)
                             png_bytes = pix.tobytes("png")
-                            encoded = base64.b64encode(png_bytes).decode("ascii")
+                            limited_png = png_bytes if len(png_bytes) <= _PREVIEW_MAX_BYTES else png_bytes[:_PREVIEW_MAX_BYTES]
+                            encoded = base64.b64encode(limited_png).decode("ascii")
                             page_urls.append(f"data:image/png;base64,{encoded}")
                         preview_url = page_urls[0]
                         pdf_pages_map[filename] = page_urls

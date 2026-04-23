@@ -55,6 +55,14 @@ class AuthState(rx.State):
     def can_chat_image_upload(self) -> bool:
         return self.has_permission("chat:image_upload")
 
+    @rx.var
+    def can_access_files(self) -> bool:
+        return self.has_permission("files:read")
+
+    @rx.var
+    def home_route(self) -> str:
+        return "/files" if self.can_access_files else "/chat"
+
     def toggle_show_password(self) -> None:
         self.show_password = not self.show_password
 
@@ -70,6 +78,7 @@ class AuthState(rx.State):
     def _apply_auth_user(self, user) -> None:
         self.is_authenticated = True
         self.user_id = user.id
+        self.email = user.email
         self.user_display_name = user.display_name
         self.user_roles = list(user.roles)
         self.user_permissions = list(user.permissions)
@@ -112,20 +121,30 @@ class AuthState(rx.State):
             self.is_submitting = False
 
     async def logout(self):
-        if self.auth_token:
-            await delete_session_token(self.auth_token)
+        token = self.auth_token
         self._clear_auth_identity()
         self.email = ""
         self.password = ""
         self.auth_error = ""
         self.show_password = False
+        if token:
+            try:
+                await delete_session_token(token)
+            except Exception:
+                # Local logout should still succeed even if token revoke fails.
+                pass
         return rx.redirect("/login")
 
     async def guard_protected_route(self):
         """Redirect guests away from protected pages."""
         if not self.auth_token:
             return rx.redirect("/login")
-        user = await get_session_user(self.auth_token)
+        try:
+            user = await get_session_user(self.auth_token)
+        except Exception:
+            self._clear_auth_identity()
+            self.auth_error = "Session check failed. Please sign in again."
+            return rx.redirect("/login")
         if user is None:
             self._clear_auth_identity()
             return rx.redirect("/login")
@@ -143,7 +162,12 @@ class AuthState(rx.State):
     async def guard_login_route(self):
         """Redirect authenticated users away from login page."""
         if self.auth_token:
-            user = await get_session_user(self.auth_token)
+            try:
+                user = await get_session_user(self.auth_token)
+            except Exception:
+                self._clear_auth_identity()
+                self.auth_error = "Session check failed. Please sign in."
+                return None
             if user is not None:
                 self._apply_auth_user(user)
                 return rx.redirect(post_login_route_value(self.user_roles))

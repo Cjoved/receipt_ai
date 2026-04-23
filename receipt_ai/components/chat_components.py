@@ -69,39 +69,170 @@ _PANEL = {
 }
 
 
-def _chat_user_bubble(m) -> rx.Component:
+def _chat_user_bubble(m, idx) -> rx.Component:
     """Right-aligned user pill (Technical AI agri)."""
     return motion(
-        rx.hstack(
-            rx.box(
-                rx.text(
-                    m["content"],
-                    size="2",
-                    color="white",
-                    style={"whiteSpace": "pre-wrap"},
+        rx.vstack(
+            rx.hstack(
+                rx.box(
+                    rx.vstack(
+                    rx.cond(
+                        m.get("attachment_preview_url_1", "") != "",
+                        rx.flex(
+                            rx.image(
+                                src=m.get("attachment_preview_url_1", ""),
+                                width="72px",
+                                height="72px",
+                                object_fit="cover",
+                                border_radius="8px",
+                                border="1px solid rgba(255,255,255,0.35)",
+                                cursor="pointer",
+                                on_click=ChatState.open_message_image_preview_group(
+                                    0,
+                                    m.get("attachment_name_1", ""),
+                                    m.get("attachment_preview_url_1", ""),
+                                    m.get("attachment_name_2", ""),
+                                    m.get("attachment_preview_url_2", ""),
+                                    m.get("attachment_name_3", ""),
+                                    m.get("attachment_preview_url_3", ""),
+                                ),
+                            ),
+                            rx.cond(
+                                m.get("attachment_preview_url_2", "") != "",
+                                rx.image(
+                                    src=m.get("attachment_preview_url_2", ""),
+                                    width="72px",
+                                    height="72px",
+                                    object_fit="cover",
+                                    border_radius="8px",
+                                    border="1px solid rgba(255,255,255,0.35)",
+                                    cursor="pointer",
+                                    on_click=ChatState.open_message_image_preview_group(
+                                        1,
+                                        m.get("attachment_name_1", ""),
+                                        m.get("attachment_preview_url_1", ""),
+                                        m.get("attachment_name_2", ""),
+                                        m.get("attachment_preview_url_2", ""),
+                                        m.get("attachment_name_3", ""),
+                                        m.get("attachment_preview_url_3", ""),
+                                    ),
+                                ),
+                                rx.fragment(),
+                            ),
+                            rx.cond(
+                                m.get("attachment_preview_url_3", "") != "",
+                                rx.image(
+                                    src=m.get("attachment_preview_url_3", ""),
+                                    width="72px",
+                                    height="72px",
+                                    object_fit="cover",
+                                    border_radius="8px",
+                                    border="1px solid rgba(255,255,255,0.35)",
+                                    cursor="pointer",
+                                    on_click=ChatState.open_message_image_preview_group(
+                                        2,
+                                        m.get("attachment_name_1", ""),
+                                        m.get("attachment_preview_url_1", ""),
+                                        m.get("attachment_name_2", ""),
+                                        m.get("attachment_preview_url_2", ""),
+                                        m.get("attachment_name_3", ""),
+                                        m.get("attachment_preview_url_3", ""),
+                                    ),
+                                ),
+                                rx.fragment(),
+                            ),
+                            gap="2",
+                            align="start",
+                            wrap="wrap",
+                        ),
+                        rx.fragment(),
+                    ),
+                    rx.text(
+                        m["content"],
+                        size="2",
+                        color="white",
+                        style={"whiteSpace": "pre-wrap"},
+                    ),
+                    spacing="2",
+                    align="start",
+                    width="100%",
+                    ),
+                    max_width="min(78%, 46rem)",
+                    bg=_USER_BUBBLE_BG,
+                    padding="0.52rem 0.9rem",
+                    border_radius="16px",
+                    border_top_right_radius="6px",
+                    box_shadow="0 5px 14px rgba(22, 163, 74, 0.22)",
+                    border="1px solid rgba(255,255,255,0.18)",
+                    class_name="chat-user-bubble",
                 ),
-                max_width="min(78%, 46rem)",
-                bg=_USER_BUBBLE_BG,
-                padding="0.52rem 0.9rem",
-                border_radius="16px",
-                border_top_right_radius="6px",
-                box_shadow="0 5px 14px rgba(22, 163, 74, 0.22)",
-                border="1px solid rgba(255,255,255,0.18)",
+                rx.center(
+                    rx.icon("user", size=14, color="white"),
+                    width="28px",
+                    height="28px",
+                    flex_shrink="0",
+                    border_radius="8px",
+                    background=_mode("linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)", "linear-gradient(135deg, #0f766e 0%, #115e59 100%)"),
+                    box_shadow="0 2px 8px rgba(20, 184, 166, 0.3)",
+                ),
+                justify="end",
+                align="start",
+                spacing="3",
+                width="100%",
+                padding_right="0.2rem",
             ),
-            rx.center(
-                rx.icon("user", size=14, color="white"),
-                width="28px",
-                height="28px",
-                flex_shrink="0",
-                border_radius="8px",
-                background=_mode("linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)", "linear-gradient(135deg, #0f766e 0%, #115e59 100%)"),
-                box_shadow="0 2px 8px rgba(20, 184, 166, 0.3)",
+            rx.hstack(
+                rx.button(
+                    rx.icon(
+                        rx.cond(
+                            (ChatState.message_action_role == "user") & (ChatState.message_action_index == idx),
+                            "check",
+                            "copy",
+                        ),
+                        size=14,
+                        color=_mode("#0f172a", "#f8fafc"),
+                    ),
+                    size="1",
+                    variant=rx.cond(
+                        (ChatState.message_action_role == "user") & (ChatState.message_action_index == idx),
+                        "solid",
+                        "soft",
+                    ),
+                    color_scheme=rx.cond(
+                        (ChatState.message_action_role == "user") & (ChatState.message_action_index == idx),
+                        "green",
+                        "gray",
+                    ),
+                    on_click=ChatState.copy_message_action(m["content"], "user", idx),
+                    aria_label="Copy message",
+                    title="Copy",
+                ),
+                rx.button(
+                    rx.icon("pencil", size=14, color=_mode("#0f172a", "#f8fafc")),
+                    size="1",
+                    variant="soft",
+                    color_scheme="gray",
+                    on_click=ChatState.edit_message_to_draft(m["content"], m.get("id", ""), idx),
+                    aria_label="Edit message",
+                    title="Edit",
+                ),
+                rx.button(
+                    rx.icon("refresh-cw", size=14, color=_mode("#0f172a", "#f8fafc")),
+                    size="1",
+                    variant="soft",
+                    color_scheme="gray",
+                    on_click=ChatState.resend_message_from_bubble(m["content"]),
+                    aria_label="Resend message",
+                    title="Resend",
+                ),
+                class_name="chat-bubble-actions",
+                spacing="1",
+                justify="end",
+                width="100%",
             ),
-            justify="end",
-            align="start",
-            spacing="3",
             width="100%",
-            padding_right="0.2rem",
+            align="end",
+            class_name="chat-user-row",
         ),
         initial={"opacity": 0, "y": 8},
         animate={"opacity": 1, "y": 0},
@@ -109,21 +240,22 @@ def _chat_user_bubble(m) -> rx.Component:
     )
 
 
-def _chat_assistant_bubble(m) -> rx.Component:
+def _chat_assistant_bubble(m, idx) -> rx.Component:
     """Left column: gradient avatar + markdown body."""
     return motion(
-        rx.hstack(
-            rx.center(
-                rx.icon("leaf", size=16, color="white"),
-                width="28px",
-                height="28px",
-                flex_shrink="0",
-                border_radius="8px",
-                background="linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
-                box_shadow="0 2px 8px rgba(34, 197, 94, 0.28)",
-            ),
-            rx.box(
-                rx.vstack(
+        rx.vstack(
+            rx.hstack(
+                rx.center(
+                    rx.icon("leaf", size=16, color="white"),
+                    width="28px",
+                    height="28px",
+                    flex_shrink="0",
+                    border_radius="8px",
+                    background="linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
+                    box_shadow="0 2px 8px rgba(34, 197, 94, 0.28)",
+                ),
+                rx.box(
+                    rx.vstack(
                     rx.hstack(
                         rx.badge(
                             rx.cond(m.get("mode", "normal") == "reasoning", "Reasoning", "Normal"),
@@ -142,6 +274,22 @@ def _chat_assistant_bubble(m) -> rx.Component:
                             ),
                             rx.fragment(),
                         ),
+                        rx.cond(
+                            idx == (ChatState.message_count - 1),
+                            rx.button(
+                            rx.hstack(
+                                rx.icon("rotate-cw", size=13),
+                                rx.text("Regenerate", size="1"),
+                                spacing="1",
+                                align="center",
+                            ),
+                                size="1",
+                                variant="soft",
+                                color_scheme="green",
+                                on_click=ChatState.regenerate_last_response,
+                            ),
+                            rx.fragment(),
+                        ),
                         width="100%",
                         align="center",
                         spacing="2",
@@ -152,15 +300,54 @@ def _chat_assistant_bubble(m) -> rx.Component:
                         rx.vstack(
                             rx.badge(
                                 rx.cond(
-                                    m.get("sources_count", 0) == 1,
-                                    "1 source",
-                                    f"{m.get('sources_count', 0)} sources",
+                                    m.get("sources_file_count", 0) == 0,
+                                    rx.cond(
+                                        m.get("sources_count", 0) == 1,
+                                        "1 source",
+                                        f"{m.get('sources_count', 0)} sources",
+                                    ),
+                                    rx.cond(
+                                        m.get("sources_file_count", 0) == 1,
+                                        f"1 file, {m.get('sources_chunk_count', m.get('sources_count', 0))} chunks",
+                                        f"{m.get('sources_file_count', 0)} files, {m.get('sources_chunk_count', m.get('sources_count', 0))} chunks",
+                                    ),
                                 ),
                                 size="1",
                                 variant="soft",
                                 color_scheme="green",
                             ),
-                            rx.text(m.get("sources_preview", ""), size="1", color=MUTED_TEXT),
+                            rx.badge(
+                                m.get("sources_preview", ""),
+                                size="1",
+                                variant="surface",
+                                color_scheme="gray",
+                            ),
+                            rx.hstack(
+                                rx.button(
+                                    rx.hstack(
+                                        rx.icon("external-link", size=12),
+                                        rx.text("Open", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    size="1",
+                                    variant="soft",
+                                    on_click=ChatState.open_message_source(m.get("id", "")),
+                                ),
+                                rx.button(
+                                    rx.hstack(
+                                        rx.icon("quote", size=12),
+                                        rx.text("Citation", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    size="1",
+                                    variant="soft",
+                                    on_click=ChatState.copy_message_citation(m.get("id", ""), "assistant", idx),
+                                ),
+                                spacing="1",
+                                wrap="wrap",
+                            ),
                             width="100%",
                             align="start",
                             spacing="1",
@@ -171,19 +358,82 @@ def _chat_assistant_bubble(m) -> rx.Component:
                     spacing="2",
                     align="start",
                     width="100%",
+                    ),
+                    max_width="min(82%, 50rem)",
+                    color=_mode("#374151", "#d1d5db"),
+                    bg=_mode("#f8fafc", "#0f1a2a"),
+                    border=f"1px solid {BORDER_COLOR}",
+                    border_radius="12px",
+                    padding="0.6rem 0.75rem",
+                    box_shadow=_mode("0 6px 14px rgba(15, 23, 42, 0.08)", "0 6px 14px rgba(2, 6, 23, 0.24)"),
+                    class_name="chat-assistant-bubble",
                 ),
-                max_width="min(82%, 50rem)",
-                color=_mode("#374151", "#d1d5db"),
-                bg=_mode("#f8fafc", "#0f1a2a"),
-                border=f"1px solid {BORDER_COLOR}",
-                border_radius="12px",
-                padding="0.6rem 0.75rem",
-                box_shadow=_mode("0 6px 14px rgba(15, 23, 42, 0.08)", "0 6px 14px rgba(2, 6, 23, 0.24)"),
+                spacing="3",
+                align="start",
+                width="auto",
+                max_width="100%",
             ),
-            spacing="3",
+            rx.hstack(
+                rx.button(
+                    rx.icon(
+                        rx.cond(
+                            (ChatState.message_action_role == "assistant") & (ChatState.message_action_index == idx),
+                            "check",
+                            "copy",
+                        ),
+                        size=14,
+                        color=_mode("#0f172a", "#f8fafc"),
+                    ),
+                    size="1",
+                    variant=rx.cond(
+                        (ChatState.message_action_role == "assistant") & (ChatState.message_action_index == idx),
+                        "solid",
+                        "soft",
+                    ),
+                    color_scheme=rx.cond(
+                        (ChatState.message_action_role == "assistant") & (ChatState.message_action_index == idx),
+                        "green",
+                        "gray",
+                    ),
+                    on_click=ChatState.copy_message_action(m["content"], "assistant", idx),
+                    aria_label="Copy assistant message",
+                    title="Copy",
+                ),
+                rx.button(
+                    rx.icon("file-text", size=14, color=_mode("#0f172a", "#f8fafc")),
+                    size="1",
+                    variant="soft",
+                    color_scheme="gray",
+                    on_click=ChatState.copy_markdown_stub(m["content"], "assistant", idx),
+                    aria_label="Copy markdown",
+                    title="Copy markdown",
+                ),
+                rx.button(
+                    rx.icon("thumbs-up", size=14, color=_mode("#0f172a", "#f8fafc")),
+                    size="1",
+                    variant="soft",
+                    color_scheme=rx.cond(m.get("feedback_vote", "") == "up", "green", "gray"),
+                    on_click=ChatState.set_message_feedback(m.get("id", ""), "up"),
+                    aria_label="Helpful response",
+                    title="Helpful",
+                ),
+                rx.button(
+                    rx.icon("thumbs-down", size=14, color=_mode("#0f172a", "#f8fafc")),
+                    size="1",
+                    variant="soft",
+                    color_scheme=rx.cond(m.get("feedback_vote", "") == "down", "orange", "gray"),
+                    on_click=ChatState.set_message_feedback(m.get("id", ""), "down"),
+                    aria_label="Not helpful response",
+                    title="Not helpful",
+                ),
+                class_name="chat-bubble-actions",
+                spacing="1",
+                justify="start",
+                width="100%",
+            ),
+            width="100%",
             align="start",
-            width="auto",
-            max_width="100%",
+            class_name="chat-assistant-row",
         ),
         initial={"opacity": 0, "y": 8},
         animate={"opacity": 1, "y": 0},
@@ -246,6 +496,17 @@ def _chat_streaming_row() -> rx.Component:
                             size="1",
                             variant="soft",
                             color_scheme=rx.cond(ChatState.streaming_mode == "reasoning", "green", "gray"),
+                        ),
+                        rx.cond(
+                            ChatState.rag_busy,
+                            rx.button(
+                                "Stop",
+                                size="1",
+                                variant="soft",
+                                color_scheme="orange",
+                                on_click=ChatState.request_stop_generation,
+                            ),
+                            rx.fragment(),
                         ),
                         width="100%",
                         align="center",
@@ -491,6 +752,11 @@ def chat_composer() -> rx.Component:
                             rx.text(ChatState.chat_upload_error, size="1", color="red"),
                             rx.fragment(),
                         ),
+                        rx.text(
+                            "Attach up to 3 images (jpg, png, webp, gif, bmp). You can send with text or image-only.",
+                            size="1",
+                            color=MUTED_TEXT,
+                        ),
                         width="100%",
                         spacing="1",
                         padding_x="0.45rem",
@@ -586,6 +852,22 @@ def chat_composer() -> rx.Component:
                             ),
                             rx.spacer(),
                             rx.button(
+                                rx.icon("chevron-left", size=16),
+                                size="1",
+                                variant="soft",
+                                on_click=ChatState.preview_prev_image,
+                                disabled=~ChatState.chat_preview_has_prev,
+                                aria_label="Previous image",
+                            ),
+                            rx.button(
+                                rx.icon("chevron-right", size=16),
+                                size="1",
+                                variant="soft",
+                                on_click=ChatState.preview_next_image,
+                                disabled=~ChatState.chat_preview_has_next,
+                                aria_label="Next image",
+                            ),
+                            rx.button(
                                 rx.icon("x", size=16),
                                 size="1",
                                 variant="soft",
@@ -606,6 +888,7 @@ def chat_composer() -> rx.Component:
                         ),
                         spacing="2",
                         width="min(86vw, 980px)",
+                        on_click=rx.call_script("event.stopPropagation()"),
                     ),
                     position="fixed",
                     inset="0",
@@ -615,6 +898,12 @@ def chat_composer() -> rx.Component:
                     align_items="center",
                     justify_content="center",
                     padding="1rem",
+                    id="chat-image-preview-overlay",
+                    tab_index=0,
+                    on_click=ChatState.close_chat_image_preview,
+                    on_mount=rx.call_script(
+                        "const el=document.getElementById('chat-image-preview-overlay'); if(el){el.focus();}"
+                    ),
                 ),
                 rx.fragment(),
             ),
@@ -701,10 +990,10 @@ def chat_center_panel() -> rx.Component:
                             rx.vstack(
                                 rx.foreach(
                                     ChatState.messages,
-                                    lambda m: rx.cond(
+                                    lambda m, i: rx.cond(
                                         m["role"] == "user",
-                                        _chat_user_bubble(m),
-                                        _chat_assistant_bubble(m),
+                                        _chat_user_bubble(m, i),
+                                        _chat_assistant_bubble(m, i),
                                     ),
                                 ),
                                 rx.cond(
@@ -749,6 +1038,32 @@ def chat_center_panel() -> rx.Component:
                                     max_width="420px",
                                     size=TEXT_SIZE_SM,
                                     line_height="1.5",
+                                ),
+                                rx.cond(
+                                    ChatState.show_suggestions,
+                                    rx.vstack(
+                                        rx.text("Try one:", size="1", color=MUTED_TEXT),
+                                        rx.flex(
+                                            rx.foreach(
+                                                ChatState.suggested_prompts,
+                                                lambda prompt: rx.button(
+                                                    prompt,
+                                                    size="1",
+                                                    variant="soft",
+                                                    color_scheme="green",
+                                                    on_click=ChatState.apply_suggestion(prompt),
+                                                ),
+                                            ),
+                                            spacing="2",
+                                            wrap="wrap",
+                                            justify="center",
+                                            width="100%",
+                                        ),
+                                        spacing="2",
+                                        width="100%",
+                                        align="center",
+                                    ),
+                                    rx.fragment(),
                                 ),
                                 spacing="3",
                                 align="center",

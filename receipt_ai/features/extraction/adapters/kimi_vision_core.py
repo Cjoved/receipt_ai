@@ -36,6 +36,7 @@ def kimi_raw_vision_completion(
     image_bytes: bytes,
     mime: str,
     prompt_label: str,
+    pdf_page_mode: bool = False,
 ) -> str:
     """Call Kimi vision API; return stripped assistant text (no receipt validation)."""
     _require_kimi(config)
@@ -45,22 +46,36 @@ def kimi_raw_vision_completion(
         timeout=config.kimi_timeout_seconds,
     )
     b64 = base64.b64encode(image_bytes).decode("ascii")
+    if pdf_page_mode:
+        system_instruction = (
+            "You extract text from scanned document pages used in expense packets. "
+            "These pages may be receipts, invoices, service invoices, acknowledgement receipts, "
+            "or other transaction proofs. Preserve visible text exactly where possible. "
+            "Return clean plain text and include key fields when found: merchant, date, line items, tax, total, payment method. "
+            "Return NOT_RECEIPT only if the page is clearly unrelated to finance/transaction documents "
+            "(e.g., selfie, scenery, chat screenshot, blank art image)."
+        )
+        user_instruction = f"Extract all visible text from this document page: {prompt_label}"
+    else:
+        system_instruction = (
+            "You extract text from receipt images only. "
+            "If the image is not a receipt document, return exactly: NOT_RECEIPT. "
+            "For valid receipts, return clean plain text and include key fields when found: "
+            "merchant, date, line items, tax, total, payment method."
+        )
+        user_instruction = f"Extract the receipt text from this image: {prompt_label}"
+
     result = client.chat.completions.create(
         model=config.kimi_model,
         messages=[
             {
                 "role": "system",
-                "content": (
-                    "You extract text from receipt images only. "
-                    "If the image is not a receipt document, return exactly: NOT_RECEIPT. "
-                    "For valid receipts, return clean plain text and include key fields when found: "
-                    "merchant, date, line items, tax, total, payment method."
-                ),
+                "content": system_instruction,
             },
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"Extract the receipt text from this image: {prompt_label}"},
+                    {"type": "text", "text": user_instruction},
                     {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
                 ],
             },
@@ -84,6 +99,7 @@ def kimi_extract_receipt_image_strict(
             image_bytes=image_bytes,
             mime=mime,
             prompt_label=prompt_label,
+            pdf_page_mode=True,
         )
         if text == "":
             raise ExternalAIError("Kimi returned empty output.")
@@ -104,9 +120,14 @@ def kimi_try_receipt_page(
     image_bytes: bytes,
     mime: str,
     prompt_label: str,
+    relax_receipt_validation: bool = False,
 ) -> tuple[str | None, str | None]:
     """
     PDF page (or soft-fail path): return (text, None) on success, or (None, reason) to skip the page.
+
+    When ``relax_receipt_validation`` is True (multi-page PDF vision), still reject empty output and
+    ``NOT_RECEIPT``, but keep text that fails :func:`is_likely_receipt` so invoices / odd layouts are
+    not silently dropped between pages.
     """
     try:
         text = kimi_raw_vision_completion(
@@ -122,6 +143,12 @@ def kimi_try_receipt_page(
             logger.info("kimi_pdf_page_skip label=%s reason=not_receipt", prompt_label)
             return (None, "not_receipt")
         if config.require_receipt_signals and not is_likely_receipt(text):
+            if relax_receipt_validation:
+                logger.info(
+                    "kimi_pdf_page_relax_accept label=%s (output failed strict receipt heuristics)",
+                    prompt_label,
+                )
+                return (text, None)
             logger.info("kimi_pdf_page_skip label=%s reason=receipt_validation", prompt_label)
             return (None, "receipt_validation")
         return (text, None)

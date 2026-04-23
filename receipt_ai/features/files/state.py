@@ -331,7 +331,7 @@ class FilesState(
                 name,
                 int(obj.get("size_bytes", 0) or 0),
                 obj.get("last_modified"),
-                obj.get("last_modified"),
+                obj.get("uploaded_at", obj.get("last_modified")),
             )
             file_key = f"{storage_folder}/{name}"
             row["index_status"] = index_repo.get_status(file_key)
