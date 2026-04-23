@@ -48,6 +48,14 @@ class ExtractionOrchestrator:
                 warnings=warnings,
                 duration_ms=elapsed,
             )
+            stats = getattr(extractor, "last_vision_stats", None)
+            if isinstance(stats, dict):
+                result.pages_total = int(stats.get("pages_total", 0) or 0)
+                result.pages_extracted = int(stats.get("pages_extracted", 0) or 0)
+                result.pages_skipped = int(stats.get("pages_skipped", 0) or 0)
+                raw_reasons = stats.get("skip_reasons", {})
+                if isinstance(raw_reasons, dict):
+                    result.skip_reasons = {str(k): int(v) for k, v in raw_reasons.items()}
             if self.config.enable_txt_output and result.text:
                 result.output_path = write_extraction_txt(self.config.output_dir, request.storage_folder, result)
 

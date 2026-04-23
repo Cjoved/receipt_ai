@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+from datetime import UTC, datetime
 from typing import BinaryIO
 
 from botocore.client import BaseClient
@@ -36,6 +37,9 @@ class WasabiStorage:
         if guessed_type:
             # Store content type so browsers can render file inline when possible.
             extra_args["ContentType"] = guessed_type
+        extra_args["Metadata"] = {
+            "uploaded_at": datetime.now(UTC).isoformat(),
+        }
         try:
             if extra_args:
                 self._client.upload_fileobj(
@@ -52,7 +56,7 @@ class WasabiStorage:
 
     # List direct files inside one folder (non-recursive).
     def list_folder_file_objects(self, folder_path: str) -> list[dict[str, object]]:
-        """List direct files with metadata (name, size_bytes, last_modified)."""
+        """List direct files with metadata (name, size_bytes, last_modified, uploaded_at)."""
         prefix = folder_key(self._config, folder_path)
         try:
             response = self._client.list_objects_v2(
@@ -72,8 +76,23 @@ class WasabiStorage:
                         "name": key.split("/")[-1],
                         "size_bytes": int(item.get("Size", 0)),
                         "last_modified": item.get("LastModified"),
+                        "uploaded_at": item.get("LastModified"),
                     }
                 )
+        # Hydrate upload timestamp from object metadata (best effort).
+        for obj in objects:
+            try:
+                full_path = f"{folder_path.strip('/')}/{str(obj.get('name', '')).strip('/')}"
+                key = full_key(self._config, full_path)
+                head = self._client.head_object(Bucket=self._config.bucket, Key=key)
+                meta = head.get("Metadata", {}) or {}
+                uploaded_raw = str(meta.get("uploaded_at", "")).strip()
+                if uploaded_raw:
+                    uploaded_at = datetime.fromisoformat(uploaded_raw.replace("Z", "+00:00"))
+                    obj["uploaded_at"] = uploaded_at
+            except Exception:
+                # Fallback to last_modified when metadata is missing/unparseable.
+                obj["uploaded_at"] = obj.get("last_modified")
         return objects
 
     # List direct files inside one folder (non-recursive).

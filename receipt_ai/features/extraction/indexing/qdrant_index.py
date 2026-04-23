@@ -138,7 +138,7 @@ def build_qdrant_filter(
     if file_key_exact:
         must.append(
             models.FieldCondition(
-                key="metadata.file_key",
+                key="metadata.document_key",
                 match=models.MatchValue(value=file_key_exact),
             )
         )

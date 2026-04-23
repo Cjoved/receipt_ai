@@ -178,12 +178,12 @@ def top_nav(active_page: str) -> rx.Component:
                                 spacing="2",
                                 align="center",
                             ),
-                            href="/files",
+                            href=AuthState.home_route,
                             class_name="nav-brand-link",
                         ),
                         rx.hstack(
                             rx.cond(
-                                AuthState.is_admin,
+                                AuthState.can_access_files,
                                 nav_button("Files", "/files", files_active, icon="folder"),
                             ),
                             nav_button("Chat", "/chat", chat_active, icon="message-circle"),
@@ -209,7 +209,7 @@ def top_nav(active_page: str) -> rx.Component:
                 rx.box(
                     rx.vstack(
                         rx.cond(
-                            AuthState.is_admin,
+                            AuthState.can_access_files,
                             _mobile_nav_link(
                                 label="Files",
                                 href="/files",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from receipt_ai.core.db.base import Base
@@ -69,6 +69,9 @@ class Message(Base):
     sources: Mapped[list["MessageSource"]] = relationship(
         back_populates="message", cascade="all, delete-orphan", passive_deletes=True
     )
+    feedbacks: Mapped[list["MessageFeedback"]] = relationship(
+        back_populates="message", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class MessageSource(Base):
@@ -83,6 +86,25 @@ class MessageSource(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
     message: Mapped["Message"] = relationship(back_populates="sources")
+
+
+class MessageFeedback(Base):
+    __tablename__ = "message_feedback"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", name="uq_message_feedback_message_user"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[str] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    vote: Mapped[str] = mapped_column(String(8), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    message: Mapped["Message"] = relationship(back_populates="feedbacks")
 
 
 class Role(Base):

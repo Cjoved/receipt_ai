@@ -1,0 +1,23 @@
+[
+  {
+    "id": "tl_broad_all_receipts",
+    "language": "tl",
+    "query": "Kunin mo lahat ng receipt at ilagay sa table title at amount lang.",
+    "expected_mode": "broad",
+    "minimum_rows": 10
+  },
+  {
+    "id": "en_latest_total",
+    "language": "en",
+    "query": "Summarize the total amount and date from my latest receipt.",
+    "expected_mode": "narrow",
+    "requires_latest_logic": true
+  },
+  {
+    "id": "tl_latest_total",
+    "language": "tl",
+    "query": "Ibigay ang total amount at date ng pinakabagong resibo.",
+    "expected_mode": "narrow",
+    "requires_language_following": true
+  }
+]

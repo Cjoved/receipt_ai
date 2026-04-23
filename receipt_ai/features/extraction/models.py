@@ -24,3 +24,7 @@ class ExtractionResult:
     error: str = ""
     duration_ms: int = 0
     output_path: str = ""
+    pages_total: int = 0
+    pages_extracted: int = 0
+    pages_skipped: int = 0
+    skip_reasons: dict[str, int] = field(default_factory=dict)

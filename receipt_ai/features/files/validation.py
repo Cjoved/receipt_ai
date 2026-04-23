@@ -13,7 +13,6 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     "png",
     "webp",
     "gif",
-    "svg",
     "csv",
     "txt",
     "md",
