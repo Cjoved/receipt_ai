@@ -255,6 +255,11 @@ CHAT_SHELL_CSS = """
   display: none;
   flex-shrink: 0;
   align-self: stretch;
+  width: 18px;
+  min-width: 18px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 5;
 }
 .chat-mobile-bar {
   display: none;
@@ -271,7 +276,7 @@ CHAT_SHELL_CSS = """
   }
   .chat-sidebar-col {
     width: var(--chat-sidebar-pct, 22%) !important;
-    max-width: 280px;
+    max-width: min(560px, 60vw);
     min-width: 220px;
     flex-shrink: 0;
   }
@@ -304,16 +309,22 @@ CHAT_SHELL_CSS = """
   }
 }
 .chat-divider-grip {
-  width: 6px;
+  width: 10px;
   align-self: stretch;
   min-height: 120px;
   border-radius: 4px;
   background: transparent;
   cursor: col-resize;
   transition: background 0.15s ease;
+  touch-action: none;
+  user-select: none;
+  pointer-events: auto;
 }
 .chat-divider-grip:hover {
   background: var(--chat-divider-hover, rgba(34, 197, 94, 0.18));
+}
+.chat-shell.chat-resizing .chat-divider-grip {
+  background: var(--chat-divider-hover, rgba(34, 197, 94, 0.24));
 }
 .chat-thread-header {
   display: none;
@@ -338,7 +349,7 @@ CHAT_SHELL_CSS = """
 }
 .chat-bubble-actions {
   opacity: 0;
-  transition: opacity 0.14s ease, transform 0.14s ease;
+  transition: opacity 0.14s ease 0.14s, transform 0.14s ease 0.14s;
   transform: translateY(2px);
   pointer-events: none;
   padding-top: 0.12rem;
@@ -359,13 +370,40 @@ CHAT_SHELL_CSS = """
 .chat-assistant-bubble:hover {
   box-shadow: 0 8px 20px rgba(2, 6, 23, 0.22);
 }
-.chat-user-row:hover .chat-bubble-actions,
+.chat-source-list {
+  margin-top: 0.125rem;
+}
+.chat-source-line {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.chat-thread-title {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-recent-title {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-user-row > div:first-child:hover + .chat-bubble-actions,
 .chat-user-row:focus-within .chat-bubble-actions,
-.chat-assistant-row:hover .chat-bubble-actions,
+.chat-assistant-row > div:first-child:hover + .chat-bubble-actions,
+.chat-user-row .chat-bubble-actions:hover,
+.chat-user-row .chat-bubble-actions:focus-within,
+.chat-assistant-row .chat-bubble-actions:hover,
+.chat-assistant-row .chat-bubble-actions:focus-within,
 .chat-assistant-row:focus-within .chat-bubble-actions {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+  transition-delay: 0s;
 }
 @media (min-width: 768px) {
   .chat-thread-header {
@@ -377,8 +415,10 @@ CHAT_SHELL_CSS = """
 # Assistant markdown thread (Technical AI chat-prose feel).
 CHAT_MARKDOWN_CSS = """
 .chat-md-prose .markdown {
-  font-size: 0.8125rem;
+  font-size: clamp(0.8125rem, 0.79rem + 0.2vw, 0.92rem);
   line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .chat-md-prose .markdown p {
   margin: 0 0 0.45rem 0;
@@ -401,6 +441,16 @@ CHAT_MARKDOWN_CSS = """
   padding: 0.55rem 0.65rem;
   border-radius: 8px;
   overflow-x: auto;
+  max-width: 100%;
+}
+.chat-md-prose .markdown table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+.chat-assistant-bubble,
+.chat-user-bubble {
+  min-width: 0;
 }
 .chat-thinking-dot {
   width: 6px;
@@ -443,11 +493,31 @@ CHAT_MARKDOWN_CSS = """
     opacity: 0;
   }
 }
+@keyframes chat-regen-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.chat-regen-spin {
+  animation: chat-regen-spin 1s linear infinite;
+}
+.chat-refresh-spin {
+  animation: chat-regen-spin 1s linear infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .chat-thinking-dot {
     animation: none;
   }
   .chat-stream-cursor-wrap.chat-md-prose .markdown::after {
+    animation: none;
+  }
+  .chat-regen-spin {
+    animation: none;
+  }
+  .chat-refresh-spin {
     animation: none;
   }
   .chat-bubble-actions {

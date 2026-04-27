@@ -17,7 +17,10 @@ def confirm_modal(
     return rx.alert_dialog.root(
         rx.alert_dialog.content(
             rx.alert_dialog.title(title),
-            rx.alert_dialog.description(body),
+            rx.alert_dialog.description(
+                body,
+                margin_bottom="0.9rem",
+            ),
             rx.hstack(
                 rx.alert_dialog.cancel(
                     rx.button("Cancel", variant="outline", on_click=on_cancel),

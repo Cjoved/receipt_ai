@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import re
 import time
 import reflex as rx
 from typing import Any
@@ -30,14 +31,17 @@ from receipt_ai.features.files.state import FilesState, get_storage
 
 # History rail drag: same pattern as Files explorer (rx.call_script + Promise).
 _CHAT_DIVIDER_DRAG_JS = """
-return new Promise((resolve) => {
+new Promise((resolve) => {
   const root = document.getElementById("chat-split-root");
   if (!root) {
     resolve(22);
     return;
   }
   const prevSelect = document.body.style.userSelect;
+  const prevCursor = document.body.style.cursor;
   document.body.style.userSelect = "none";
+  document.body.style.cursor = "col-resize";
+  root.classList.add("chat-resizing");
   const move = (e) => {
     const r = root.getBoundingClientRect();
     if (r.width <= 0) return;
@@ -46,15 +50,18 @@ return new Promise((resolve) => {
     root.style.setProperty("--chat-sidebar-pct", p + "%");
   };
   const up = () => {
-    window.removeEventListener("mousemove", move);
+    document.removeEventListener("mousemove", move);
+    document.removeEventListener("mouseup", up);
     document.body.style.userSelect = prevSelect;
+    document.body.style.cursor = prevCursor;
+    root.classList.remove("chat-resizing");
     const raw = getComputedStyle(root).getPropertyValue("--chat-sidebar-pct").trim() || "22%";
     const n = parseFloat(raw);
     resolve(Number.isFinite(n) ? Math.round(n) : 22);
   };
-  window.addEventListener("mousemove", move);
-  window.addEventListener("mouseup", up, { once: true });
-});
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", up, { once: true });
+})
 """
 
 _CHAT_UPLOAD_FILES_BY_KEY: dict[str, list[rx.UploadFile]] = {}
@@ -101,7 +108,13 @@ class ChatState(rx.State):
     message_feedback: dict[str, str] = {}
     editing_message_id: str = ""
     editing_message_index: int = -1
+    inline_edit_text: str = ""
     last_failed_assistant_message_id: str = ""
+    regenerating_message_id: str = ""
+    history_refreshing: bool = False
+    show_source_selector: bool = False
+    source_selector_message_id: str = ""
+    source_selector_items: list[dict[str, Any]] = []
 
     @rx.var
     def chat_sidebar_width_css(self) -> str:
@@ -171,6 +184,18 @@ class ChatState(rx.State):
     def _new_local_message_id(self, prefix: str) -> str:
         stamp = int(time.time() * 1000)
         return f"{prefix}-{stamp}-{len(self.messages)}"
+
+    def _build_conversation_title(self, user_prompt: str, assistant_reply: str) -> str:
+        user_part = " ".join(str(user_prompt or "").strip().split())
+        assistant_part = " ".join(str(assistant_reply or "").strip().split())
+        if user_part and assistant_part:
+            combined = f"{user_part} - {assistant_part}"
+            return combined[:96]
+        if user_part:
+            return user_part[:96]
+        if assistant_part:
+            return assistant_part[:96]
+        return "Conversation thread"
 
     def _stash_set_chat_files(self, files: list[rx.UploadFile]) -> None:
         _CHAT_UPLOAD_FILES_BY_KEY[self._upload_stash_key()] = list(files)
@@ -275,22 +300,102 @@ class ChatState(rx.State):
             )
         return "\n".join(lines).strip()
 
+    def _find_message_index_by_id(self, message_id: str) -> int:
+        msg_id = (message_id or "").strip()
+        if not msg_id:
+            return -1
+        return next((i for i, row in enumerate(self.messages) if str(row.get("id", "")).strip() == msg_id), -1)
+
+    def _find_assistant_index_after(self, user_index: int) -> int:
+        if user_index < 0:
+            return -1
+        for i in range(user_index + 1, len(self.messages)):
+            if str(self.messages[i].get("role", "")) == "assistant":
+                return i
+        return -1
+
+    def _assistant_sources_for_current_version(self, message_id: str) -> list[dict[str, Any]]:
+        idx = self._find_message_index_by_id(message_id)
+        if idx < 0:
+            return []
+        row = self.messages[idx]
+        versions = row.get("response_versions", [])
+        if versions:
+            active_idx = int(row.get("active_version_index", 0) or 0)
+            active_idx = max(0, min(len(versions) - 1, active_idx))
+            return list(versions[active_idx].get("sources", []))
+        return list(row.get("sources", []))
+
+    def _dedupe_sources(self, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen_keys: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        for item in sources:
+            file_key = self._normalize_source_file_key(str(item.get("file_key", "")).strip())
+            source_name = str(item.get("source_name", "")).strip()
+            normalized_name = " ".join(source_name.lower().split())
+            normalized_file = " ".join(file_key.lower().split())
+            # Prefer source name dedupe to avoid repeated chunk rows from same file.
+            dedupe_key = normalized_name or normalized_file
+            if not dedupe_key or dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            deduped.append(item)
+        return deduped
+
+    def _build_sources_lines(self, sources: list[dict[str, Any]]) -> str:
+        deduped = self._dedupe_sources(sources)
+        return "\n".join([f"Source {i + 1}: {str(src.get('source_name', '')).strip() or 'source'}" for i, src in enumerate(deduped)])
+
+    def _normalize_source_file_key(self, file_key: str) -> str:
+        key = str(file_key or "").strip()
+        if not key:
+            return ""
+        # Some chunk metadata appends tags like ":p15" or ":chunk_3" after the file extension.
+        # Example: "foo/bar/receipt.pdf:p15" -> "foo/bar/receipt.pdf"
+        key = re.sub(r"^(.+\.[A-Za-z0-9]{2,8}):.+$", r"\1", key)
+        key = re.sub(r":p\d+$", "", key, flags=re.IGNORECASE)
+        key = key.lstrip("/")
+        return key
+
     async def open_message_source(self, message_id: str) -> rx.event.EventSpec:
         msg_id = (message_id or "").strip()
         if not msg_id:
             return rx.toast.warning("No source is available for this message.")
-        auth = await self.get_state(AuthState)
-        if not auth.user_id:
-            return rx.toast.error("Please sign in to open sources.")
-        sources = await list_message_sources_for_user(msg_id, user_id=auth.user_id)
+        sources = self._assistant_sources_for_current_version(msg_id)
         if not sources:
             return rx.toast.warning("No source is available for this message.")
-        file_key = str(sources[0].get("file_key", "")).strip()
+        self.source_selector_message_id = msg_id
+        self.source_selector_items = [
+            {
+                "source_index": int(item.get("source_index", 0) or 0),
+                "source_name": str(item.get("source_name", "")).strip() or str(item.get("file_key", "")).strip() or "source",
+                "file_key": self._normalize_source_file_key(str(item.get("file_key", "")).strip()),
+                "chunk_index": int(item.get("chunk_index", 0) or 0),
+                "score": float(item.get("score", 0.0) or 0.0),
+            }
+            for item in self._dedupe_sources(sources)
+            if self._normalize_source_file_key(str(item.get("file_key", "")).strip()) != ""
+        ]
+        if not self.source_selector_items:
+            return rx.toast.warning("Source file is missing.")
+        self.show_source_selector = True
+
+    def close_source_selector(self) -> None:
+        self.show_source_selector = False
+        self.source_selector_message_id = ""
+        self.source_selector_items = []
+
+    async def open_source_selector_item(self, source_index: int) -> rx.event.EventSpec:
+        idx = max(0, int(source_index))
+        if idx >= len(self.source_selector_items):
+            return rx.toast.warning("Selected source is not available.")
+        file_key = str(self.source_selector_items[idx].get("file_key", "")).strip()
         if not file_key:
             return rx.toast.warning("Source file is missing.")
         try:
             storage = get_storage()
             source_url = storage.presigned_get_url(file_key, inline=True)
+            self.close_source_selector()
             return rx.redirect(source_url, is_external=True)
         except Exception as exc:
             return rx.toast.error(f"Failed to open source: {exc}")
@@ -352,17 +457,139 @@ class ChatState(rx.State):
 
     def edit_message_to_draft(self, text: str, message_id: str = "", index: int = -1) -> None:
         self.draft_message = str(text or "").strip()
+        self.inline_edit_text = str(text or "").strip()
         self.editing_message_id = str(message_id or "").strip()
         try:
             self.editing_message_index = int(index)
         except (TypeError, ValueError):
             self.editing_message_index = -1
 
-    def resend_message_from_bubble(self, text: str):
-        self.draft_message = str(text or "").strip()
-        if self.draft_message == "":
-            return None
+    def set_inline_edit_text(self, value: str) -> None:
+        self.inline_edit_text = str(value or "")
+
+    def cancel_inline_edit(self) -> None:
+        self.inline_edit_text = ""
+        self.editing_message_id = ""
+        self.editing_message_index = -1
+
+    def handle_inline_edit_key_signal(self, signal: str):
+        if signal in {"send", "send_now"}:
+            return type(self).submit_inline_edit
+
+    def submit_inline_edit(self):
+        text = str(self.inline_edit_text or "").strip()
+        if text == "":
+            return rx.toast.warning("Edited message cannot be empty.")
+        self.draft_message = text
         return type(self).send_draft
+
+    def submit_inline_edit_form(self, form_data: dict | None = None):
+        _ = form_data
+        return type(self).submit_inline_edit
+
+    async def resend_message_from_bubble(self, text: str, message_id: str = "", index: int = -1):
+        prompt = str(text or "").strip()
+        if prompt == "" or self.rag_busy:
+            return
+        try:
+            parsed_index = int(index)
+        except (TypeError, ValueError):
+            parsed_index = -1
+        user_index = parsed_index if parsed_index >= 0 else self._find_message_index_by_id(message_id)
+        if user_index < 0:
+            yield rx.toast.warning("Cannot resend this message right now.")
+            return
+        target_assistant_index = self._find_assistant_index_after(user_index)
+        if target_assistant_index < 0:
+            yield rx.toast.warning("No assistant reply found for this message.")
+            return
+        async for event in self._regenerate_assistant_version(prompt, target_assistant_index):
+            yield event
+
+    async def regenerate_assistant_message(self, message_id: str = "", index: int = -1):
+        if self.rag_busy:
+            return
+        assistant_index = -1
+        try:
+            parsed_index = int(index)
+        except (TypeError, ValueError):
+            parsed_index = -1
+        if parsed_index >= 0 and parsed_index < len(self.messages):
+            assistant_index = parsed_index
+        elif message_id:
+            assistant_index = self._find_message_index_by_id(message_id)
+        if assistant_index < 0 or assistant_index >= len(self.messages):
+            yield rx.toast.warning("Cannot regenerate this response right now.")
+            return
+        if str(self.messages[assistant_index].get("role", "")) != "assistant":
+            yield rx.toast.warning("Cannot regenerate this response right now.")
+            return
+        user_index = assistant_index - 1
+        while user_index >= 0 and str(self.messages[user_index].get("role", "")) != "user":
+            user_index -= 1
+        if user_index < 0:
+            yield rx.toast.warning("No user prompt found for this response.")
+            return
+        prompt = str(self.messages[user_index].get("content", "")).strip()
+        if not prompt:
+            yield rx.toast.warning("No user prompt found for this response.")
+            return
+        async for event in self._regenerate_assistant_version(prompt, assistant_index):
+            yield event
+
+    def show_prev_response_version(self, message_id: str) -> None:
+        idx = self._find_message_index_by_id(message_id)
+        if idx < 0:
+            return
+        row = self.messages[idx]
+        versions = row.get("response_versions", [])
+        if not versions:
+            return
+        active_idx = int(row.get("active_version_index", 0) or 0)
+        if active_idx <= 0:
+            return
+        self.messages = [
+            *self.messages[:idx],
+            {
+                **row,
+                **versions[active_idx - 1],
+                "version_label": str(active_idx),
+                "active_version_index": active_idx - 1,
+                "response_versions": versions,
+                "response_versions_count": len(versions),
+                "has_multiple_versions": ("1" if len(versions) > 1 else "0"),
+                "has_prev_version": ("1" if (active_idx - 1) > 0 else "0"),
+                "has_next_version": ("1" if (active_idx - 1) < (len(versions) - 1) else "0"),
+            },
+            *self.messages[idx + 1 :],
+        ]
+
+    def show_next_response_version(self, message_id: str) -> None:
+        idx = self._find_message_index_by_id(message_id)
+        if idx < 0:
+            return
+        row = self.messages[idx]
+        versions = row.get("response_versions", [])
+        if not versions:
+            return
+        active_idx = int(row.get("active_version_index", 0) or 0)
+        if active_idx >= len(versions) - 1:
+            return
+        self.messages = [
+            *self.messages[:idx],
+            {
+                **row,
+                **versions[active_idx + 1],
+                "version_label": str(active_idx + 2),
+                "active_version_index": active_idx + 1,
+                "response_versions": versions,
+                "response_versions_count": len(versions),
+                "has_multiple_versions": ("1" if len(versions) > 1 else "0"),
+                "has_prev_version": ("1" if (active_idx + 1) > 0 else "0"),
+                "has_next_version": ("1" if (active_idx + 1) < (len(versions) - 1) else "0"),
+            },
+            *self.messages[idx + 1 :],
+        ]
 
     def clear_chat_upload_selection(self):
         self.chat_upload_previews = []
@@ -511,6 +738,8 @@ class ChatState(rx.State):
         valid_names: list[str] = []
         rejected_names: list[str] = []
         for file in files[:3]:
+            if self.cancel_stream_requested:
+                return ("", [], [])
             filename = str(getattr(file, "filename", "") or "").strip()
             if not filename:
                 continue
@@ -544,7 +773,7 @@ class ChatState(rx.State):
             self.message_feedback = {}
             self.streaming_text = ""
             await self.load_suggestions()
-            return
+            return self.scroll_chat_to_latest()
         self.sidebar_threads = await list_chat_payload(auth.user_id)
         if not self.sidebar_threads:
             self.active_conversation_id = ""
@@ -552,17 +781,35 @@ class ChatState(rx.State):
             self.message_feedback = {}
             self.streaming_text = ""
             await self.load_suggestions()
-            return
+            return self.scroll_chat_to_latest()
         if not self.active_conversation_id:
             self.active_conversation_id = str(self.sidebar_threads[0].get("id", ""))
         self.streaming_text = ""
         await self._load_active_conversation_messages()
         await self.load_suggestions()
+        return self.scroll_chat_to_latest()
+
+    async def refresh_threads(self):
+        if self.history_refreshing:
+            return
+        self.history_refreshing = True
+        try:
+            yield
+            started = time.monotonic()
+            await self.load_history()
+            elapsed = time.monotonic() - started
+            min_loading_seconds = 1.8
+            if elapsed < min_loading_seconds:
+                await asyncio.sleep(min_loading_seconds - elapsed)
+            yield rx.toast.success("Threads refreshed.")
+        finally:
+            self.history_refreshing = False
 
     async def select_conversation(self, conversation_id: str) -> None:
         self.active_conversation_id = conversation_id
         self.streaming_text = ""
         await self._load_active_conversation_messages()
+        yield self.scroll_chat_to_latest()
 
     def request_delete_thread(self, conversation_id: str) -> None:
         convo_id = (conversation_id or "").strip()
@@ -619,6 +866,7 @@ class ChatState(rx.State):
         ]
         self.streaming_text = ""
         await self.load_suggestions()
+        return self.scroll_chat_to_latest()
 
     def set_draft(self, value: str) -> None:
         self.draft_message = value
@@ -649,13 +897,8 @@ class ChatState(rx.State):
             }
             for src in reply.sources
         ]
-        source_file_count = len(
-            {
-                str(src.get("file_key", "")).strip()
-                for src in sources_payload
-                if str(src.get("file_key", "")).strip() != ""
-            }
-        )
+        deduped_sources = self._dedupe_sources(sources_payload)
+        source_file_count = len(deduped_sources)
         source_chunk_count = len(sources_payload)
         row = {
             "id": (message_id or self._new_local_message_id("assistant")),
@@ -664,19 +907,164 @@ class ChatState(rx.State):
             "mode": reply.mode,
             "is_error": "1" if reply.error else "0",
             "sources": sources_payload,
-            "sources_count": len(sources_payload),
+            "sources_count": len(deduped_sources),
             "sources_file_count": source_file_count,
             "sources_chunk_count": source_chunk_count,
             "sources_preview": ", ".join(
-                [f"Source {src['source_index']}: {src['source_name']}" for src in sources_payload[:2]]
+                [f"Source {i + 1}: {src.get('source_name', 'source')}" for i, src in enumerate(deduped_sources[:2])]
             ),
+            "sources_lines": self._build_sources_lines(sources_payload),
             "stopped_by_user": "1" if stopped_by_user else "0",
             "feedback_vote": "",
+            "version_label": "1",
+            "has_multiple_versions": "0",
+            "has_prev_version": "0",
+            "has_next_version": "0",
         }
+        row["response_versions"] = [{k: v for k, v in row.items() if k != "response_versions"}]
+        row["active_version_index"] = 0
+        row["response_versions_count"] = 1
         if 0 <= int(replace_index) < len(self.messages):
             self.messages = [*self.messages[:replace_index], row, *self.messages[replace_index + 1 :]]
             return
         self.messages = [*self.messages, row]
+
+    async def _regenerate_assistant_version(self, prompt: str, assistant_index: int):
+        if self.rag_busy:
+            return
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            yield rx.toast.error("Please sign in first.")
+            return
+        self.rag_busy = True
+        self.cancel_stream_requested = False
+        self.streaming_text = ""
+        if 0 <= int(assistant_index) < len(self.messages):
+            self.regenerating_message_id = str(self.messages[assistant_index].get("id", "")).strip()
+        else:
+            self.regenerating_message_id = ""
+        mode = self.chat_mode if self.chat_mode in {"normal", "reasoning"} else "normal"
+        self.streaming_mode = mode
+        files = await self.get_state(FilesState)
+        folder_key = None
+        file_exact = None
+        if files.expanded_folder_name:
+            folder_key = files._resolve_storage_folder_name(files.expanded_folder_name)
+            if files.selected_child_file_name:
+                file_exact = f"{folder_key}/{files.selected_child_file_name}"
+        try:
+            yield
+            if self.cancel_stream_requested:
+                return
+            gen = stream_rag_chunks(
+                prompt,
+                folder_storage_key=folder_key,
+                file_key_exact=file_exact,
+                chat_mode=mode,
+            )
+            accumulated = ""
+            last_flush = time.monotonic()
+            throttle_s = 0.055
+            while True:
+                if self.cancel_stream_requested:
+                    reply = RagReply(
+                        content=(accumulated.strip() or "Generation stopped."),
+                        mode=mode,
+                        sources=[],
+                        error="",
+                        retryable=False,
+                    )
+                    break
+                kind, payload = await asyncio.to_thread(stream_iter_next, gen)
+                if kind == "done":
+                    reply = payload
+                    break
+                accumulated += payload
+                now = time.monotonic()
+                if now - last_flush >= throttle_s:
+                    last_flush = now
+                    yield
+            yield
+            self.streaming_text = ""
+            if assistant_index < 0 or assistant_index >= len(self.messages):
+                return
+            row = self.messages[assistant_index]
+            message_id = str(row.get("id", "")).strip()
+            sources_payload = [
+                {
+                    "source_index": src.source_index,
+                    "file_key": src.file_key,
+                    "source_name": src.source_name,
+                    "chunk_index": src.chunk_index,
+                    "score": src.score,
+                }
+                for src in reply.sources
+            ]
+            deduped_sources = self._dedupe_sources(sources_payload)
+            if message_id:
+                await update_assistant_message(
+                    message_id=message_id,
+                    user_id=auth.user_id,
+                    content=reply.content,
+                    sources=sources_payload,
+                )
+            source_file_count = len(deduped_sources)
+            version_payload = {
+                "content": reply.content,
+                "mode": reply.mode,
+                "is_error": "1" if reply.error else "0",
+                "sources": sources_payload,
+                "sources_count": len(deduped_sources),
+                "sources_file_count": source_file_count,
+                "sources_chunk_count": len(sources_payload),
+                "sources_preview": ", ".join(
+                    [f"Source {i + 1}: {src.get('source_name', 'source')}" for i, src in enumerate(deduped_sources[:2])]
+                ),
+                "sources_lines": self._build_sources_lines(sources_payload),
+                "stopped_by_user": "1" if self.cancel_stream_requested else "0",
+                "version_label": "1",
+            }
+            existing_versions = list(row.get("response_versions", []))
+            if not existing_versions:
+                existing_versions = [
+                    {
+                        "content": row.get("content", ""),
+                        "mode": row.get("mode", "normal"),
+                        "is_error": row.get("is_error", "0"),
+                        "sources": list(row.get("sources", [])),
+                        "sources_count": int(row.get("sources_count", 0) or 0),
+                        "sources_file_count": int(row.get("sources_file_count", 0) or 0),
+                        "sources_chunk_count": int(row.get("sources_chunk_count", 0) or 0),
+                        "sources_preview": row.get("sources_preview", ""),
+                        "sources_lines": row.get("sources_lines", ""),
+                        "stopped_by_user": row.get("stopped_by_user", "0"),
+                        "version_label": "1",
+                    }
+                ]
+            version_payload["version_label"] = str(len(existing_versions) + 1)
+            updated_versions = [*existing_versions, version_payload]
+            has_multiple_versions = "1" if len(updated_versions) > 1 else "0"
+            active_idx = len(updated_versions) - 1
+            self.messages = [
+                *self.messages[:assistant_index],
+                {
+                    **row,
+                    **version_payload,
+                    "response_versions": updated_versions,
+                    "active_version_index": active_idx,
+                    "response_versions_count": len(updated_versions),
+                    "has_multiple_versions": has_multiple_versions,
+                    "has_prev_version": ("1" if active_idx > 0 else "0"),
+                    "has_next_version": ("1" if active_idx < (len(updated_versions) - 1) else "0"),
+                },
+                *self.messages[assistant_index + 1 :],
+            ]
+            yield self.scroll_chat_to_latest()
+        finally:
+            self.rag_busy = False
+            self.cancel_stream_requested = False
+            self.streaming_text = ""
+            self.regenerating_message_id = ""
 
     def scroll_chat_to_latest(self):
         return rx.call_script(
@@ -687,6 +1075,10 @@ class ChatState(rx.State):
     def handle_composer_key_signal(self, signal: str):
         if signal in {"send", "send_now"}:
             return type(self).send_draft
+
+    def submit_chat_form(self, form_data: dict | None = None):
+        _ = form_data
+        return type(self).send_draft
 
     async def send_draft(self):
         message = self.draft_message.strip()
@@ -755,6 +1147,10 @@ class ChatState(rx.State):
             return
 
         attachment_context, attachment_names, rejected_attachment_names = await self._extract_chat_attachment_context()
+        if self.cancel_stream_requested:
+            self.rag_busy = False
+            self.streaming_text = ""
+            return
         request_message = clipped
         if attachment_context:
             request_message = f"{clipped}\n\n[Attached image extraction context]\n{attachment_context}"
@@ -811,6 +1207,14 @@ class ChatState(rx.State):
                         response_replace_index = j
                         response_replace_id = str(self.messages[j].get("id", "")).strip()
                         break
+                # Remove the previous assistant reply immediately after saving edit
+                # so the old answer disappears before streaming/animation starts.
+                if response_replace_index >= 0:
+                    self.messages = [
+                        *self.messages[:response_replace_index],
+                        *self.messages[response_replace_index + 1 :],
+                    ]
+                    response_replace_index = -1
             else:
                 edit_message_id = ""
                 self.editing_message_id = ""
@@ -858,10 +1262,13 @@ class ChatState(rx.State):
                 },
             ]
         self.draft_message = ""
+        self.inline_edit_text = ""
         self.editing_message_id = ""
         self.editing_message_index = -1
         try:
             yield
+            if self.cancel_stream_requested:
+                return
             # If attachments were provided but none were accepted as receipts, short-circuit with fallback.
             if self.has_queued_attachments and not attachment_names and rejected_attachment_names:
                 fallback = (
@@ -889,6 +1296,8 @@ class ChatState(rx.State):
                 return
 
             files = await self.get_state(FilesState)
+            if self.cancel_stream_requested:
+                return
             folder_key = None
             file_exact = None
             if files.expanded_folder_name:
@@ -928,7 +1337,7 @@ class ChatState(rx.State):
                 now = time.monotonic()
                 if now - last_flush >= throttle_s:
                     last_flush = now
-                    yield
+                    yield self.scroll_chat_to_latest()
             yield
             self.streaming_text = ""
             sources_payload = [
@@ -959,7 +1368,8 @@ class ChatState(rx.State):
                     sources=sources_payload,
                 )
             if len(self.messages) <= 2:
-                await rename_conversation(self.active_conversation_id, user_id=auth.user_id, title=clipped[:80])
+                convo_title = self._build_conversation_title(clipped, reply.content)
+                await rename_conversation(self.active_conversation_id, user_id=auth.user_id, title=convo_title)
                 self.sidebar_threads = await list_chat_payload(auth.user_id)
             was_cancelled = self.cancel_stream_requested
             self._push_assistant_message(
@@ -1215,3 +1625,4 @@ class ChatState(rx.State):
 
     def show_chat_content_mobile(self) -> None:
         self.chat_mobile_view = "content"
+        return self.scroll_chat_to_latest()

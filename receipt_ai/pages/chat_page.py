@@ -50,14 +50,16 @@ def chat_page() -> rx.Component:
                             border_right=f"1px solid {BORDER_COLOR}",
                         ),
                         rx.box(
-                            rx.box(class_name="chat-divider-grip"),
+                            rx.box(
+                                class_name="chat-divider-grip",
+                                on_mouse_down=ChatState.on_chat_divider_mouse_down,
+                                title="Drag to resize history",
+                                aria_label="Resize history panel",
+                            ),
                             class_name="chat-divider-col",
                             padding_y="0.5rem",
                             align_items="center",
                             justify_content="center",
-                            on_mouse_down=ChatState.on_chat_divider_mouse_down,
-                            title="Drag to resize history",
-                            aria_label="Resize history panel",
                         ),
                         rx.box(
                             rx.flex(
