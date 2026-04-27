@@ -193,3 +193,22 @@ async def upsert_user(
             await db.commit()
         roles, perms = await _resolve_user_rbac(row.id)
         return AuthUser(id=row.id, email=row.email, display_name=row.display_name, roles=roles, permissions=perms)
+
+
+async def update_user_display_name(user_id: str, display_name: str) -> AuthUser | None:
+    clean_user_id = user_id.strip()
+    clean_display_name = display_name.strip()
+    if not clean_user_id:
+        return None
+    if not clean_display_name:
+        return None
+
+    async with get_async_session() as db:
+        row = await db.scalar(select(User).where(User.id == clean_user_id, User.is_active.is_(True)))
+        if row is None:
+            return None
+        row.display_name = clean_display_name
+        await db.commit()
+        await db.refresh(row)
+        roles, perms = await _resolve_user_rbac(row.id)
+        return AuthUser(id=row.id, email=row.email, display_name=row.display_name, roles=roles, permissions=perms)

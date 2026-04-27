@@ -99,6 +99,51 @@ class RagServiceTests(unittest.TestCase):
             self.assertLess(pos_newer, pos_older)
             self.assertRegex(human, r"\[Source 1:.*160351")
             self.assertRegex(human, r"\[Source 2:.*160346")
+            self.assertIn("implausible future ocr dates were ignored", human.lower())
+
+    def test_latest_question_ignores_future_ocr_date_outlier(self):
+        cfg = ExtractionConfig(
+            deepseek_api_key="k",
+            deepseek_base_url="https://api.deepseek.com",
+            deepseek_chat_model="deepseek-chat",
+            deepseek_reasoning_model="deepseek-reasoner",
+            deepseek_timeout_seconds=30,
+            rag_top_k=4,
+        )
+        hits = [
+            RetrievedChunk(
+                file_key="f/page_nov.txt",
+                source_name="page_nov.txt",
+                chunk_index=0,
+                content="merchant: LJH FOODS\nDate: 11/19/26\ntotal: 595.64",
+                score=0.99,
+                section_type="text",
+                uploaded_epoch=100,
+            ),
+            RetrievedChunk(
+                file_key="f/page_apr.txt",
+                source_name="page_apr.txt",
+                chunk_index=1,
+                content="merchant: PETRON\nDate: 04/07/2026\ntotal: 3,000.00",
+                score=0.5,
+                section_type="text",
+                uploaded_epoch=100,
+            ),
+        ]
+        with (
+            patch("receipt_ai.features.chat.rag_service.ChunkRetriever") as retriever_cls,
+            patch("receipt_ai.features.chat.rag_service.OpenAI") as openai_cls,
+        ):
+            retriever_cls.return_value.retrieve.return_value = hits
+            openai_cls.return_value.chat.completions.create.return_value.choices = [
+                type("Choice", (), {"message": type("Msg", (), {"content": "ok"})()})()
+            ]
+            run_rag_reply("latest receipt total and date", chat_mode="normal", config=cfg)
+            messages = openai_cls.return_value.chat.completions.create.call_args.kwargs["messages"]
+            human = next(m["content"] for m in messages if m["role"] == "user")
+            pos_apr = human.index("page_apr")
+            pos_nov = human.index("page_nov")
+            self.assertLess(pos_apr, pos_nov)
 
     def test_retrieval_failure_returns_retryable_error(self):
         cfg = ExtractionConfig(deepseek_api_key="k")

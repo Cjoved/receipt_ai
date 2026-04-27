@@ -73,7 +73,11 @@ def _account_menu() -> rx.Component:
             rx.button(
                 rx.hstack(
                     rx.box(
-                        "R",
+                        rx.cond(
+                            AuthState.user_display_name != "",
+                            AuthState.user_display_name[:1],
+                            "U",
+                        ),
                         width="28px",
                         height="28px",
                         border_radius=RADIUS_FULL,
@@ -108,7 +112,7 @@ def _account_menu() -> rx.Component:
                 border_bottom=f"1px solid {border_default}",
             ),
             rx.dropdown_menu.separator(),
-            rx.dropdown_menu.item("Profile"),
+            rx.dropdown_menu.item("Settings", on_click=AuthState.go_to_settings),
             rx.dropdown_menu.item("Log out", on_click=AuthState.logout),
             side="bottom",
             align="end",

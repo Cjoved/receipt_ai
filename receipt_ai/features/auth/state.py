@@ -1,6 +1,12 @@
 import reflex as rx
 
-from receipt_ai.features.auth.service import authenticate_user, create_session_token, delete_session_token, get_session_user
+from receipt_ai.features.auth.service import (
+    authenticate_user,
+    create_session_token,
+    delete_session_token,
+    get_session_user,
+    update_user_display_name,
+)
 
 
 def has_role_value(roles: list[str] | tuple[str, ...], role: str) -> bool:
@@ -42,6 +48,12 @@ class AuthState(rx.State):
     user_roles: list[str] = []
     user_permissions: list[str] = []
     primary_role: str = "user"
+    settings_display_name: str = ""
+    settings_default_page: str = "chat"
+    settings_compact_mode: bool = False
+    settings_is_submitting: bool = False
+    settings_error: str = ""
+    settings_success: str = ""
 
     @rx.var
     def is_admin(self) -> bool:
@@ -69,6 +81,68 @@ class AuthState(rx.State):
     def clear_auth_error(self) -> None:
         self.auth_error = ""
 
+    def clear_settings_feedback(self) -> None:
+        self.settings_error = ""
+        self.settings_success = ""
+
+    def load_settings_form(self) -> None:
+        self.settings_display_name = self.user_display_name
+        self.settings_default_page = "files" if self.can_access_files else "chat"
+        self.settings_error = ""
+        self.settings_success = ""
+
+    def set_settings_default_page(self, value: str) -> None:
+        clean = value.strip().lower()
+        if clean not in {"chat", "files"}:
+            return
+        if clean == "files" and not self.can_access_files:
+            self.settings_error = "Files page is available to admins only."
+            self.settings_success = ""
+            return
+        self.settings_default_page = clean
+        self.settings_error = ""
+
+    def go_to_settings(self):
+        return rx.redirect("/settings")
+
+    async def save_settings(self):
+        if not self.user_id:
+            self.settings_error = "Session expired. Please sign in again."
+            self.settings_success = ""
+            return rx.redirect("/login")
+
+        name = self.settings_display_name.strip()
+        if not name:
+            self.settings_error = "Display name is required."
+            self.settings_success = ""
+            return None
+        if len(name) < 2:
+            self.settings_error = "Display name must be at least 2 characters."
+            self.settings_success = ""
+            return None
+        if len(name) > 120:
+            self.settings_error = "Display name must be at most 120 characters."
+            self.settings_success = ""
+            return None
+
+        self.settings_is_submitting = True
+        self.settings_error = ""
+        self.settings_success = ""
+        try:
+            user = await update_user_display_name(self.user_id, name)
+            if user is None:
+                self.settings_error = "Unable to update settings. Please try again."
+                return None
+            self._apply_auth_user(user)
+            self.settings_display_name = self.user_display_name
+            self.settings_success = "Settings saved."
+            return None
+        except Exception:
+            self.settings_error = "Settings save failed. Please try again."
+            return None
+        finally:
+            self.settings_is_submitting = False
+
     def has_role(self, role: str) -> bool:
         return has_role_value(self.user_roles, role)
 
@@ -80,6 +154,7 @@ class AuthState(rx.State):
         self.user_id = user.id
         self.email = user.email
         self.user_display_name = user.display_name
+        self.settings_display_name = user.display_name
         self.user_roles = list(user.roles)
         self.user_permissions = list(user.permissions)
         self.primary_role = primary_role_value(self.user_roles)
@@ -149,6 +224,8 @@ class AuthState(rx.State):
             self._clear_auth_identity()
             return rx.redirect("/login")
         self._apply_auth_user(user)
+        if not self.settings_display_name:
+            self.settings_display_name = self.user_display_name
         return None
 
     async def guard_admin_route(self):

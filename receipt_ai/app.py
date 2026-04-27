@@ -8,6 +8,7 @@ from receipt_ai.pages.chat_page import chat_page
 from receipt_ai.pages.files_page import files_page
 from receipt_ai.pages.login_page import login_page
 from receipt_ai.pages.not_found_page import not_found_page
+from receipt_ai.pages.settings_page import settings_page
 
 
 def create_app() -> rx.App:
@@ -64,5 +65,12 @@ def create_app() -> rx.App:
         route=Page404.SLUG,
         title="Page not found — Receipt AI",
         description="This page does not exist or was moved.",
+    )
+    app.add_page(
+        settings_page,
+        route="/settings",
+        title="Receipt AI — Settings",
+        description="Manage your account settings and workspace preferences.",
+        on_load=[AuthState.guard_protected_route, AuthState.load_settings_form],
     )
     return app

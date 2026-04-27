@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
 from typing import Iterator
 
@@ -40,6 +41,25 @@ _BROAD_RECEIPTS_RE = re.compile(
 )
 _AMOUNT_RE = re.compile(r"(?:php|₱|p\s*)([\d][\d,]*(?:\.\d{1,2})?)", re.IGNORECASE)
 _TOTAL_LINE_RE = re.compile(r"(?:total|amount due|total amount due|net amount|cash sales)\s*[:\-]?\s*(.*)", re.IGNORECASE)
+_DATE_SLASH_RE = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b")
+_MONTH_NAME_RE = re.compile(
+    r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{2,4})\b",
+    re.IGNORECASE,
+)
+_MONTH_MAP = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
 
 
 def _filename_recency_key(label: str) -> int:
@@ -62,18 +82,70 @@ def _prepare_hits_for_prompt(user_message: str, hits: list[RetrievedChunk]) -> t
         return list(hits), ""
 
     indexed = list(enumerate(hits))
+    now_utc = datetime.now(UTC)
 
-    def sort_key(item: tuple[int, RetrievedChunk]) -> tuple[int, int, int]:
+    def sort_key(item: tuple[int, RetrievedChunk]) -> tuple[int, int, int, int]:
         i, h = item
+        receipt_date_ord = _latest_valid_receipt_date_ordinal(h.content, now_utc)
         epoch = h.uploaded_epoch if h.uploaded_epoch is not None else 0
         fname = _filename_recency_key(f"{h.source_name} {h.file_key}")
-        return (-epoch, -fname, i)
+        return (-receipt_date_ord, -epoch, -fname, i)
 
     indexed.sort(key=sort_key)
     return [h for _, h in indexed], (
-        "Chunks below were reordered for recency (newer indexed_epoch / filename timestamp first); "
-        "Source numbers were reassigned in this new order."
+        "Chunks below were reordered for recency using plausible receipt dates first, then indexed_epoch / "
+        "filename timestamp. Implausible future OCR dates were ignored. Source numbers were reassigned "
+        "in this new order."
     )
+
+
+def _normalize_year(raw_year: int) -> int:
+    if raw_year < 100:
+        return 2000 + raw_year
+    return raw_year
+
+
+def _safe_datetime(year: int, month: int, day: int) -> datetime | None:
+    try:
+        return datetime(year, month, day, tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def _receipt_date_candidates(text: str) -> list[datetime]:
+    out: list[datetime] = []
+    src = text or ""
+    for m in _DATE_SLASH_RE.finditer(src):
+        month = int(m.group(1))
+        day = int(m.group(2))
+        year = _normalize_year(int(m.group(3)))
+        dt = _safe_datetime(year, month, day)
+        if dt is not None:
+            out.append(dt)
+    for m in _MONTH_NAME_RE.finditer(src):
+        month_name = str(m.group(1)).lower()
+        month = _MONTH_MAP.get(month_name)
+        if month is None:
+            continue
+        day = int(m.group(2))
+        year = _normalize_year(int(m.group(3)))
+        dt = _safe_datetime(year, month, day)
+        if dt is not None:
+            out.append(dt)
+    return out
+
+
+def _latest_valid_receipt_date_ordinal(text: str, now_utc: datetime) -> int:
+    candidates = _receipt_date_candidates(text)
+    if not candidates:
+        return 0
+    upper = now_utc + timedelta(days=14)
+    lower = datetime(2000, 1, 1, tzinfo=UTC)
+    valid = [d for d in candidates if lower <= d <= upper]
+    if not valid:
+        return 0
+    latest = max(valid)
+    return int(latest.toordinal())
 
 _RAG_PROMPT = ChatPromptTemplate.from_messages(
     [

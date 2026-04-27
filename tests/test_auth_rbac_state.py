@@ -37,3 +37,20 @@ class AuthGuardResiliencyTests(unittest.TestCase):
         source = Path("receipt_ai/features/auth/state.py").read_text(encoding="utf-8")
         self.assertIn("token = self.auth_token", source)
         self.assertIn("self._clear_auth_identity()", source)
+
+
+class AuthSettingsFlowTests(unittest.TestCase):
+    def test_settings_validation_messages_exist(self):
+        source = Path("receipt_ai/features/auth/state.py").read_text(encoding="utf-8")
+        self.assertIn("Display name is required.", source)
+        self.assertIn("Display name must be at least 2 characters.", source)
+        self.assertIn("Display name must be at most 120 characters.", source)
+
+    def test_settings_route_redirect_exists(self):
+        source = Path("receipt_ai/features/auth/state.py").read_text(encoding="utf-8")
+        self.assertIn('return rx.redirect("/settings")', source)
+
+    def test_settings_page_registered(self):
+        source = Path("receipt_ai/app.py").read_text(encoding="utf-8")
+        self.assertIn('route="/settings"', source)
+        self.assertIn("AuthState.load_settings_form", source)
