@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import base64
 import logging
+import threading
 
 from openai import OpenAI
 
 from receipt_ai.features.extraction.config import ExtractionConfig
-from receipt_ai.features.extraction.errors import ExternalAIError
+from receipt_ai.features.extraction.errors import ExtractionCancelledError, ExternalAIError
 from receipt_ai.features.extraction.validators.image_receipt_validator import is_likely_receipt
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,11 @@ def kimi_raw_vision_completion(
     mime: str,
     prompt_label: str,
     pdf_page_mode: bool = False,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     """Call Kimi vision API; return stripped assistant text (no receipt validation)."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise ExtractionCancelledError("Upload stopped by user.")
     _require_kimi(config)
     client = OpenAI(
         api_key=config.kimi_api_key,
@@ -91,6 +95,7 @@ def kimi_extract_receipt_image_strict(
     image_bytes: bytes,
     mime: str,
     prompt_label: str,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     """Single image upload: raise if not a receipt or validation fails."""
     try:
@@ -100,6 +105,7 @@ def kimi_extract_receipt_image_strict(
             mime=mime,
             prompt_label=prompt_label,
             pdf_page_mode=True,
+            cancel_event=cancel_event,
         )
         if text == "":
             raise ExternalAIError("Kimi returned empty output.")
@@ -108,6 +114,8 @@ def kimi_extract_receipt_image_strict(
         if config.require_receipt_signals and not is_likely_receipt(text):
             raise ExternalAIError("Extraction output failed receipt validation checks.")
         return text
+    except ExtractionCancelledError:
+        raise
     except ExternalAIError:
         raise
     except Exception as exc:
@@ -121,6 +129,7 @@ def kimi_try_receipt_page(
     mime: str,
     prompt_label: str,
     relax_receipt_validation: bool = False,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[str | None, str | None]:
     """
     PDF page (or soft-fail path): return (text, None) on success, or (None, reason) to skip the page.
@@ -130,11 +139,14 @@ def kimi_try_receipt_page(
     not silently dropped between pages.
     """
     try:
+        if cancel_event is not None and cancel_event.is_set():
+            raise ExtractionCancelledError("Upload stopped by user.")
         text = kimi_raw_vision_completion(
             config,
             image_bytes=image_bytes,
             mime=mime,
             prompt_label=prompt_label,
+            cancel_event=cancel_event,
         )
         if text == "":
             logger.info("kimi_pdf_page_skip label=%s reason=empty", prompt_label)
@@ -152,6 +164,8 @@ def kimi_try_receipt_page(
             logger.info("kimi_pdf_page_skip label=%s reason=receipt_validation", prompt_label)
             return (None, "receipt_validation")
         return (text, None)
+    except ExtractionCancelledError:
+        raise
     except Exception as exc:
         logger.warning("kimi_pdf_page_error label=%s error=%s", prompt_label, exc)
         return (None, f"error:{exc}")

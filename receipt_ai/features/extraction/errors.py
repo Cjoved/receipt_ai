@@ -16,3 +16,7 @@ class ExternalAIError(ExtractionError):
 
 class ValidationError(ExtractionError):
     """Raised when extracted content is considered low quality."""
+
+
+class ExtractionCancelledError(ExtractionError):
+    """Raised when the user stops upload while extraction is running (cooperative cancel)."""

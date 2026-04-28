@@ -6,8 +6,9 @@ import io
 from openpyxl import load_workbook
 
 from receipt_ai.features.extraction.config import ExtractionConfig
+from receipt_ai.features.extraction.cancel_checks import raise_if_cancelled
 from receipt_ai.features.extraction.contracts import Extractor
-from receipt_ai.features.extraction.errors import ParsingError
+from receipt_ai.features.extraction.errors import ExtractionCancelledError, ParsingError
 from receipt_ai.features.extraction.models import ExtractionRequest
 
 
@@ -24,29 +25,35 @@ class SheetExtractor(Extractor):
     def extract(self, request: ExtractionRequest) -> str:
         lowered = request.filename.lower()
         if lowered.endswith(".csv"):
-            return self._extract_csv(request.file_bytes)
-        return self._extract_xlsx(request.file_bytes)
+            return self._extract_csv(request)
+        return self._extract_xlsx(request)
 
-    def _extract_csv(self, data: bytes) -> str:
+    def _extract_csv(self, request: ExtractionRequest) -> str:
         try:
-            text = data.decode("utf-8", errors="replace")
+            text = request.file_bytes.decode("utf-8", errors="replace")
             rows = list(csv.reader(io.StringIO(text)))
             lines: list[str] = []
-            for row in rows[: self._config.max_sheet_rows]:
+            for ri, row in enumerate(rows[: self._config.max_sheet_rows]):
+                if ri % 50 == 0:
+                    raise_if_cancelled(request)
                 lines.append(" | ".join(cell.strip() for cell in row[: self._config.max_sheet_cols]))
             return "\n".join(lines).strip()
+        except ExtractionCancelledError:
+            raise
         except Exception as exc:
             raise ParsingError(f"CSV parse failed: {exc}") from exc
 
-    def _extract_xlsx(self, data: bytes) -> str:
+    def _extract_xlsx(self, request: ExtractionRequest) -> str:
         try:
-            workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+            workbook = load_workbook(io.BytesIO(request.file_bytes), read_only=True, data_only=True)
             parts: list[str] = []
             try:
                 for sheet in workbook.worksheets:
                     parts.append(f"## {sheet.title}")
                     row_idx = 0
                     for row in sheet.iter_rows(values_only=True):
+                        if row_idx % 50 == 0:
+                            raise_if_cancelled(request)
                         if row_idx >= self._config.max_sheet_rows:
                             parts.append(f"... truncated at {self._config.max_sheet_rows} rows")
                             break
@@ -58,5 +65,7 @@ class SheetExtractor(Extractor):
             finally:
                 workbook.close()
             return "\n".join(parts).strip()
+        except ExtractionCancelledError:
+            raise
         except Exception as exc:
             raise ParsingError(f"XLSX parse failed: {exc}") from exc

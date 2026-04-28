@@ -19,6 +19,9 @@ class ChunkBuildInput:
 
 
 def build_chunks(payload: ChunkBuildInput, config: ExtractionConfig) -> list[ChunkRecord]:
+    if payload.doc_type.strip().lower() == "image":
+        return _build_single_chunk_for_image(payload, config)
+
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=config.chunk_size,
         chunk_overlap=config.chunk_overlap,
@@ -76,3 +79,32 @@ def build_chunks(payload: ChunkBuildInput, config: ExtractionConfig) -> list[Chu
     for chunk in chunks:
         chunk.metadata["chunk_of"] = total
     return chunks
+
+
+def _build_single_chunk_for_image(payload: ChunkBuildInput, config: ExtractionConfig) -> list[ChunkRecord]:
+    merged = "\n\n".join(seg.content.strip() for seg in payload.segments if seg.content and seg.content.strip()).strip()
+    if len(merged) < config.chunk_min_chars:
+        return []
+    created_at = datetime.now(UTC)
+    return [
+        ChunkRecord(
+            file_key=payload.file_key,
+            source_name=payload.source_name,
+            chunk_index=0,
+            content=merged,
+            token_count_est=max(1, len(merged.split())),
+            char_start=0,
+            char_end=len(merged),
+            section_type=(payload.segments[0].section_type if payload.segments else "image"),
+            metadata={
+                "chunk_of": 1,
+                "doc_type": payload.doc_type,
+                "file_type": payload.doc_type,
+                "document_key": payload.file_key,
+                "page_key": None,
+                "page_index": None,
+                "created_at": created_at.isoformat(),
+                "uploaded_epoch": int(created_at.timestamp()),
+            },
+        )
+    ]

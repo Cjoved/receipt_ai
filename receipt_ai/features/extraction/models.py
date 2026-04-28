@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Literal
 
-ExtractionStatus = Literal["success", "failed", "skipped"]
+ExtractionStatus = Literal["success", "failed", "skipped", "cancelled"]
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,7 @@ class ExtractionRequest:
     content_type: str | None
     file_bytes: bytes
     storage_folder: str
+    cancel_event: threading.Event | None = None
 
 
 @dataclass

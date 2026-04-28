@@ -1,5 +1,4 @@
 import reflex as rx
-from reflex_motion import motion
 from reflex.components.core.upload import upload_file
 from reflex.event import EventVar
 
@@ -271,6 +270,84 @@ def files_explorer_no_folder_placeholder() -> rx.Component:
     )
 
 
+def files_no_results_placeholder() -> rx.Component:
+    """Empty-state shown when search/filter returns no matching files."""
+    return rx.box(
+        rx.vstack(
+            rx.box(
+                rx.icon("database-zap", size=34, color=accent_muted_fg),
+                padding="0.95rem",
+                border_radius="14px",
+                bg=accent_soft_bg,
+                border=f"1px solid {border_accent}",
+            ),
+            rx.heading("No data was found", size="4", color=text_primary),
+            rx.text(
+                "Walang tumugmang files sa current search/filter.",
+                size=TEXT_SIZE_MD,
+                color=MUTED_TEXT,
+                text_align="center",
+                max_width="28rem",
+            ),
+            rx.text(
+                "Try another search keyword or change active filters.",
+                size=TEXT_SIZE_SM,
+                color=rx.color("gray", 10),
+                text_align="center",
+            ),
+            spacing="3",
+            align="center",
+            justify="center",
+            width="100%",
+            min_height="min(42vh, 340px)",
+        ),
+        width="100%",
+        border=f"1px dashed {BORDER_COLOR}",
+        border_radius="12px",
+        bg=rx.color("gray", 1),
+        padding="1rem",
+    )
+
+
+def files_empty_folder_placeholder() -> rx.Component:
+    """Empty-state shown when selected folder has no files yet."""
+    return rx.box(
+        rx.vstack(
+            rx.box(
+                rx.icon("folder-open", size=34, color=accent_muted_fg),
+                padding="0.95rem",
+                border_radius="14px",
+                bg=accent_soft_bg,
+                border=f"1px solid {border_accent}",
+            ),
+            rx.heading("This folder is empty", size="4", color=text_primary),
+            rx.text(
+                "Wala pang files sa folder na ito.",
+                size=TEXT_SIZE_MD,
+                color=MUTED_TEXT,
+                text_align="center",
+                max_width="28rem",
+            ),
+            rx.text(
+                "Mag-upload ng receipt, image, o PDF para mag-start ang extraction.",
+                size=TEXT_SIZE_SM,
+                color=rx.color("gray", 10),
+                text_align="center",
+            ),
+            spacing="3",
+            align="center",
+            justify="center",
+            width="100%",
+            min_height="min(42vh, 340px)",
+        ),
+        width="100%",
+        border=f"1px dashed {BORDER_COLOR}",
+        border_radius="12px",
+        bg=rx.color("gray", 1),
+        padding="1rem",
+    )
+
+
 def download_confirm_modal() -> rx.Component:
     """Confirmation before opening a presigned download link."""
     return confirm_modal(
@@ -299,143 +376,51 @@ def download_confirm_modal() -> rx.Component:
 
 
 def upload_progress_overlay(*, compact: bool = False) -> rx.Component:
-    """Circular receipt-style upload progress overlay with stage text."""
+    """Simple blocking upload overlay aligned with app loading patterns."""
     radius = "14px" if compact else "12px"
-    ring_size = "140px" if compact else "156px"
-    ring_circumference = 345.6
     return rx.cond(
         FilesState.is_uploading,
         rx.box(
-            rx.box(
-                rx.vstack(
-                    motion(
-                        rx.box(
-                            rx.el.svg(
-                                rx.el.circle(
-                                    cx="64",
-                                    cy="64",
-                                    r="55",
-                                    fill="none",
-                                    stroke=_mode("#d9e6f7", "#1b2d4b"),
-                                    stroke_width="10",
-                                ),
-                                rx.el.circle(
-                                    cx="64",
-                                    cy="64",
-                                    r="55",
-                                    fill="none",
-                                    stroke="#22c55e",
-                                    stroke_width="10",
-                                    stroke_linecap="round",
-                                    stroke_dasharray=str(ring_circumference),
-                                    stroke_dashoffset=ring_circumference
-                                    - (FilesState.upload_progress_pct * (ring_circumference / 100)),
-                                    style={
-                                        "transition": "stroke-dashoffset 220ms linear",
-                                        "transform": "rotate(-90deg)",
-                                        "transformOrigin": "50% 50%",
-                                        "filter": "drop-shadow(0 0 6px rgba(34, 197, 94, 0.45))",
-                                    },
-                                ),
-                                viewBox="0 0 128 128",
-                                width=ring_size,
-                                height=ring_size,
-                                style={"position": "relative", "zIndex": "1"},
-                            ),
-                            rx.box(
-                                rx.vstack(
-                                    rx.icon("file-text", size=18, color="#22c55e"),
-                                    rx.box(
-                                        rx.box(
-                                            width="70%",
-                                            height="2px",
-                                            bg=_mode("#9fb6d7", "#3f5f8c"),
-                                            border_radius="999px",
-                                        ),
-                                        rx.box(
-                                            width="58%",
-                                            height="2px",
-                                            bg=_mode("#9fb6d7", "#3f5f8c"),
-                                            border_radius="999px",
-                                        ),
-                                        rx.box(
-                                            width="64%",
-                                            height="2px",
-                                            bg=_mode("#9fb6d7", "#3f5f8c"),
-                                            border_radius="999px",
-                                        ),
-                                        width="78%",
-                                        display="flex",
-                                        flex_direction="column",
-                                        gap="4px",
-                                    ),
-                                    spacing="2",
-                                    align="center",
-                                ),
-                                width="74px",
-                                height="74px",
-                                border_radius="14px",
-                                border=f"1px solid {_mode('#d0ddf0', '#2a4269')}",
-                                bg=_mode("#f8fbff", "#0c1a31"),
-                                box_shadow="0 8px 24px rgba(2, 6, 23, 0.32)",
-                                position="absolute",
-                                top="50%",
-                                left="50%",
-                                transform="translate(-50%, -50%)",
-                                z_index="2",
-                                display="flex",
-                                align_items="center",
-                                justify_content="center",
-                            ),
-                            position="relative",
-                            width=ring_size,
-                            height=ring_size,
-                        ),
-                        animate={"scale": 1.0},
-                        transition={
-                            "duration": 0.2,
-                            "ease": "easeInOut",
-                        },
-                    ),
-                    rx.text(
-                        FilesState.upload_progress_label,
-                        size="4",
-                        weight="bold",
-                        color="#22c55e",
-                    ),
-                    rx.text(
-                        FilesState.upload_stage_title,
-                        size="2",
-                        weight="bold",
-                        color=text_primary,
-                    ),
-                    rx.text(
+            rx.vstack(
+                rx.spinner(size="3"),
+                rx.heading("Uploading files...", size="4", color="white"),
+                rx.text(
+                    rx.cond(
+                        FilesState.upload_stage_detail != "",
                         FilesState.upload_stage_detail,
-                        size="1",
-                        color=MUTED_TEXT,
-                        text_align="center",
+                        "Please wait while we process your files.",
                     ),
-                    rx.badge(
-                        FilesState.upload_activity_log,
-                        size="1",
-                        variant="soft",
-                        color_scheme="green",
-                    ),
-                    rx.hstack(
-                        rx.text(FilesState.upload_counter_label, size="1", color=MUTED_TEXT),
-                        spacing="2",
-                        align="center",
-                    ),
-                    spacing="3",
-                    align="center",
-                    width="100%",
+                    size="2",
+                    color=rx.color("gray", 3),
+                    text_align="center",
+                    max_width="24rem",
                 ),
-                bg=PANEL_BG,
-                border=f"1px solid {BORDER_COLOR}",
-                border_radius="12px",
-                padding="1.5rem",
-                min_width="280px",
-                box_shadow="0 20px 50px rgba(2, 6, 23, 0.35)",
+                rx.vstack(
+                    rx.hstack(
+                        rx.text("Progress", size="1", color=rx.color("gray", 4)),
+                        rx.spacer(),
+                        rx.text(FilesState.upload_progress_label, size="1", color=rx.color("gray", 2), weight="bold"),
+                        width="100%",
+                    ),
+                    rx.box(
+                        rx.box(
+                            height="100%",
+                            border_radius="999px",
+                            bg=rx.color("green", 8),
+                            width=f"{FilesState.upload_progress_pct}%",
+                            transition="width 180ms ease",
+                        ),
+                        width="100%",
+                        height="8px",
+                        border_radius="999px",
+                        bg="rgba(255,255,255,0.20)",
+                        overflow="hidden",
+                    ),
+                    width="min(420px, 88vw)",
+                    spacing="1",
+                ),
+                spacing="3",
+                align="center",
             ),
             position="absolute",
             inset="0",
@@ -444,8 +429,9 @@ def upload_progress_overlay(*, compact: bool = False) -> rx.Component:
             display="flex",
             align_items="center",
             justify_content="center",
-            background="rgba(2, 6, 23, 0.45)",
-            backdrop_filter="blur(6px)",
+            background="rgba(2, 6, 23, 0.40)",
+            backdrop_filter="blur(3px)",
+            padding="1rem",
         ),
         rx.fragment(),
     )
@@ -950,34 +936,6 @@ def file_tree() -> rx.Component:
                 spacing="1",
             ),
         ),
-        # Conditional rename form for selected row.
-        rx.cond(
-            FilesState.show_rename_input,
-            rx.vstack(
-                rx.hstack(
-                    rx.input(
-                        value=FilesState.rename_value,
-                        placeholder="New name",
-                        on_change=FilesState.set_rename_value,
-                        size="1",
-                    ),
-                    rx.button(
-                        "Save",
-                        size="1",
-                        on_click=FilesState.request_rename_confirm,
-                        disabled=rx.cond(FilesState.rename_save_btn_enabled, False, True),
-                    ),
-                    rx.button("Cancel", size="1", variant="outline", on_click=FilesState.cancel_rename),
-                    width="100%",
-                ),
-                rx.cond(
-                    FilesState.rename_validation_error != "",
-                    rx.text(FilesState.rename_validation_error, size=TEXT_SIZE_SM, color="orange"),
-                ),
-                width="100%",
-                spacing="1",
-            ),
-        ),
         # File/folder list section.
         rx.vstack(
             # Loop through file names and render one clickable row per item.
@@ -997,7 +955,36 @@ def file_tree() -> rx.Component:
                                 size=ICON_SIZE_SM,
                                 color=accent_muted_fg,
                             ),
-                            rx.text(item["name"], size=TEXT_SIZE_MD, color=rx.color("gray", 12)),
+                            rx.cond(
+                                (FilesState.show_rename_input)
+                                & (FilesState.selected_child_file_name == "")
+                                & (item["name"] == FilesState.expanded_folder_name),
+                                rx.hstack(
+                                    rx.input(
+                                        value=FilesState.rename_value,
+                                        on_change=FilesState.set_rename_value,
+                                        size="1",
+                                        width="100%",
+                                        auto_focus=True,
+                                    ),
+                                    rx.button(
+                                        "Save",
+                                        size="1",
+                                        on_click=FilesState.request_rename_confirm,
+                                        disabled=rx.cond(FilesState.rename_save_btn_enabled, False, True),
+                                    ),
+                                    rx.button(
+                                        "Cancel",
+                                        size="1",
+                                        variant="outline",
+                                        on_click=FilesState.cancel_rename,
+                                    ),
+                                    spacing="2",
+                                    align="center",
+                                    width="100%",
+                                ),
+                                rx.text(item["name"], size=TEXT_SIZE_MD, color=rx.color("gray", 12)),
+                            ),
                             rx.spacer(),
                             rx.box(width="6px", height="6px", border_radius="999px", bg="#22c55e"),
                             spacing="2",
@@ -1020,7 +1007,26 @@ def file_tree() -> rx.Component:
                         width="100%",
                         cursor="pointer",
                         _hover={"bg": accent_soft_bg},
-                        on_click=lambda: FilesState.toggle_folder(item["name"]),
+                        on_click=rx.cond(
+                            (FilesState.show_rename_input)
+                            & (FilesState.selected_child_file_name == "")
+                            & (item["name"] == FilesState.expanded_folder_name),
+                            None,
+                            FilesState.toggle_folder(item["name"]),
+                        ),
+                    ),
+                    rx.cond(
+                        (FilesState.show_rename_input)
+                        & (FilesState.selected_child_file_name == "")
+                        & (item["name"] == FilesState.expanded_folder_name)
+                        & (FilesState.rename_validation_error != ""),
+                        rx.text(
+                            FilesState.rename_validation_error,
+                            size=TEXT_SIZE_SM,
+                            color="orange",
+                            width="100%",
+                            padding_left="0.4rem",
+                        ),
                     ),
                     # Child files: only shown when the folder is expanded.
                     rx.cond(
@@ -1029,42 +1035,90 @@ def file_tree() -> rx.Component:
                             rx.foreach(
                                 FilesState.active_folder_children,
                                 lambda child: rx.box(
-                                    rx.hstack(
-                                        rx.icon(
-                                            tag=child["icon"],
-                                            size=ICON_SIZE_XS,
-                                            color=rx.cond(
-                                                child["badge"] == "red",
-                                                "#ef4444",
-                                                rx.cond(
-                                                    child["badge"] == "purple",
-                                                    "#a855f7",
+                                    rx.vstack(
+                                        rx.hstack(
+                                            rx.icon(
+                                                tag=child["icon"],
+                                                size=ICON_SIZE_XS,
+                                                color=rx.cond(
+                                                    child["badge"] == "red",
+                                                    "#ef4444",
                                                     rx.cond(
-                                                        child["badge"] == "green",
-                                                        "#22c55e",
+                                                        child["badge"] == "purple",
+                                                        "#a855f7",
                                                         rx.cond(
-                                                            child["badge"] == "blue",
-                                                            "#3b82f6",
+                                                            child["badge"] == "green",
+                                                            "#22c55e",
                                                             rx.cond(
-                                                                child["badge"] == "orange",
-                                                                "#f97316",
-                                                                rx.color("gray", 11),
+                                                                child["badge"] == "blue",
+                                                                "#3b82f6",
+                                                                rx.cond(
+                                                                    child["badge"] == "orange",
+                                                                    "#f97316",
+                                                                    rx.color("gray", 11),
+                                                                ),
                                                             ),
                                                         ),
                                                     ),
                                                 ),
                                             ),
+                                            rx.cond(
+                                                (FilesState.show_rename_input)
+                                                & (FilesState.selected_child_file_name == child["name"]),
+                                                rx.hstack(
+                                                    rx.input(
+                                                        value=FilesState.rename_value,
+                                                        on_change=FilesState.set_rename_value,
+                                                        size="1",
+                                                        width="100%",
+                                                        auto_focus=True,
+                                                    ),
+                                                    rx.button(
+                                                        "Save",
+                                                        size="1",
+                                                        on_click=FilesState.request_rename_confirm,
+                                                        disabled=rx.cond(FilesState.rename_save_btn_enabled, False, True),
+                                                    ),
+                                                    rx.button(
+                                                        "Cancel",
+                                                        size="1",
+                                                        variant="outline",
+                                                        on_click=FilesState.cancel_rename,
+                                                    ),
+                                                    spacing="2",
+                                                    align="center",
+                                                    width="100%",
+                                                ),
+                                                rx.hstack(
+                                                    rx.text(child["name"], size=TEXT_SIZE_SM, color=rx.color("gray", 11)),
+                                                    rx.badge(
+                                                        child["ext"],
+                                                        color_scheme=child["badge"],
+                                                        variant="soft",
+                                                        size="1",
+                                                    ),
+                                                    spacing="2",
+                                                    align="center",
+                                                ),
+                                            ),
+                                            rx.spacer(),
+                                            spacing="2",
+                                            align="center",
+                                            width="100%",
                                         ),
-                                        rx.text(child["name"], size=TEXT_SIZE_SM, color=rx.color("gray", 11)),
-                                        rx.badge(
-                                            child["ext"],
-                                            color_scheme=child["badge"],
-                                            variant="soft",
-                                            size="1",
+                                        rx.cond(
+                                            (FilesState.show_rename_input)
+                                            & (FilesState.selected_child_file_name == child["name"])
+                                            & (FilesState.rename_validation_error != ""),
+                                            rx.text(
+                                                FilesState.rename_validation_error,
+                                                size=TEXT_SIZE_SM,
+                                                color="orange",
+                                                width="100%",
+                                                padding_left="1.35rem",
+                                            ),
                                         ),
-                                        rx.spacer(),
                                         spacing="2",
-                                        align="center",
                                         width="100%",
                                     ),
                                     padding="0.32rem 0.48rem",
@@ -1082,7 +1136,12 @@ def file_tree() -> rx.Component:
                                         "1px solid transparent",
                                     ),
                                     _hover={"bg": accent_soft_bg},
-                                    on_click=FilesState.select_child_file(child["name"]),
+                                    on_click=rx.cond(
+                                        (FilesState.show_rename_input)
+                                        & (FilesState.selected_child_file_name == child["name"]),
+                                        None,
+                                        FilesState.select_child_file(child["name"]),
+                                    ),
                                 ),
                             ),
                             padding_left="1.8rem",
@@ -1620,30 +1679,68 @@ def files_panel() -> rx.Component:
             FilesState.expanded_folder_name == "",
             files_explorer_no_folder_placeholder(),
         ),
+        rx.cond(
+            FilesState.is_loading_folder,
+            rx.box(
+                rx.vstack(
+                    rx.spinner(size="3"),
+                    rx.text(
+                        rx.cond(
+                            FilesState.loading_folder_name != "",
+                            f"Loading folder: {FilesState.loading_folder_name}",
+                            "Loading folder files...",
+                        ),
+                        size="2",
+                        color=rx.color("gray", 11),
+                    ),
+                    spacing="2",
+                    align="center",
+                ),
+                width="100%",
+                min_height="220px",
+                border=f"1px dashed {BORDER_COLOR}",
+                border_radius="10px",
+                bg=rx.color("gray", 1),
+                display="flex",
+                align_items="center",
+                justify_content="center",
+            ),
+        ),
         # Main content area: show either cards/list OR full preview.
+        rx.cond(
+            FilesState.is_loading_folder == False,
             rx.cond(
                 FilesState.expanded_folder_name != "",
                 rx.cond(
                     FilesState.has_selected_child_file,
                     file_preview_panel(),
-                    rx.box(
+                    rx.cond(
+                        FilesState.show_no_results_hint,
+                        files_no_results_placeholder(),
                         rx.cond(
-                            FilesState.view_mode == "grid",
+                            FilesState.show_empty_folder_hint,
+                            files_empty_folder_placeholder(),
                             rx.box(
-                                rx.foreach(
-                                    FilesState.visible_folder_children,
-                                    lambda child: active_child_file_card(child),
+                                rx.cond(
+                                    FilesState.view_mode == "grid",
+                                    rx.box(
+                                        rx.foreach(
+                                            FilesState.visible_folder_children,
+                                            lambda child: active_child_file_card(child),
+                                        ),
+                                        class_name="files-grid-cards",
+                                        width="100%",
+                                    ),
+                                    active_children_table(),
                                 ),
-                                class_name="files-grid-cards",
                                 width="100%",
+                                align_self="start",
                             ),
-                            active_children_table(),
                         ),
-                        width="100%",
-                        align_self="start",
                     ),
                 ),
             ),
+        ),
         spacing="4",
         width="100%",
         min_height="calc(100vh - 130px)",
