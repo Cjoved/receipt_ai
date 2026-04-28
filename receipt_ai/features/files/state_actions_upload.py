@@ -1,6 +1,10 @@
-import reflex as rx
 import base64
+import json
+import threading
+import time
+
 import fitz
+import reflex as rx
 
 from receipt_ai.core.upload_constants import (
     FILES_PANEL_UPLOAD_ZONE_ID,
@@ -11,6 +15,7 @@ from receipt_ai.features.extraction.indexing import IndexingRequest
 from receipt_ai.features.extraction.jobs import enqueue_uploaded_document
 from receipt_ai.features.extraction.models import ExtractionRequest
 from receipt_ai.features.extraction.orchestrator import run_upload_extraction
+from receipt_ai.features.extraction.validators.image_receipt_validator import is_likely_receipt
 from receipt_ai.features.files.validation import normalize_item_name, validate_upload_filename
 
 # Process-local stash for UploadFile objects (cannot live in serialized Reflex state).
@@ -18,8 +23,30 @@ from receipt_ai.features.files.validation import normalize_item_name, validate_u
 # after `confirm_upload_from_queue` chains to `run_confirmed_queue_upload`.
 _MODAL_UPLOAD_FILES_BY_KEY: dict[str, list[rx.UploadFile]] = {}
 _PANEL_UPLOAD_FILES_BY_KEY: dict[str, list[rx.UploadFile]] = {}
+# Thread-safe cancel signal observed inside extraction (to_thread); pairs with upload_cancel_requested.
+_UPLOAD_CANCEL_EVENTS_BY_KEY: dict[str, threading.Event] = {}
 _PREVIEW_MAX_BYTES = 1_500_000
 _PREVIEW_PDF_MAX_PAGES = 6
+_DEBUG_LOG_PATH = "debug-fa7c0f.log"
+_DEBUG_SESSION_ID = "fa7c0f"
+
+
+def _agent_debug_log(location: str, message: str, data: dict, *, run_id: str, hypothesis_id: str) -> None:
+    entry = {
+        "sessionId": _DEBUG_SESSION_ID,
+        "id": f"log_{time.time_ns()}",
+        "timestamp": int(time.time() * 1000),
+        "location": location,
+        "message": message,
+        "data": data,
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+    }
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 class FilesUploadActionsMixin:
@@ -41,25 +68,256 @@ class FilesUploadActionsMixin:
     def _reset_upload_loading_state(self) -> None:
         """Force-hide upload loading UI and clear progress state."""
         self.is_uploading = False
+        self.upload_cancel_requested = False
+        self.upload_stop_requested_at_ms = 0
+        _UPLOAD_CANCEL_EVENTS_BY_KEY.pop(self._upload_stash_key(), None)
         self.upload_stage = ""
         self.upload_stage_detail = ""
         self.upload_total_files = 0
         self.upload_completed_files = 0
         self.upload_progress_pct = 0
 
+    def _begin_upload_loading_state(self, total_files: int = 0) -> None:
+        """Shared upload loading initializer so all flows use one pattern."""
+        self.is_uploading = True
+        self.upload_cancel_requested = False
+        self.upload_stop_requested_at_ms = 0
+        key = self._upload_stash_key()
+        _UPLOAD_CANCEL_EVENTS_BY_KEY[key] = threading.Event()
+        self.upload_error = ""
+        self.upload_progress_pct = 0
+        self.upload_stage = "preparing"
+        self.upload_stage_detail = "Validating receipt files..."
+        self.upload_completed_files = 0
+        self.upload_total_files = max(0, int(total_files))
+
+    def request_stop_upload(self) -> None:
+        """Stop execution has been disabled for uploads."""
+        return rx.toast.info("Stop execution is disabled for uploads.")
+
+    def _upload_cancel_event_for_current_session(self) -> threading.Event | None:
+        return _UPLOAD_CANCEL_EVENTS_BY_KEY.get(self._upload_stash_key())
+
     def _set_upload_pipeline_progress(self, file_idx: int, phase: str) -> None:
-        """Map per-file pipeline phases to a smoother total percent."""
-        total = max(1, int(self.upload_total_files))
-        index = min(max(1, int(file_idx)), total)
-        base = (index - 1) / total
-        phase_fraction = {
-            "uploading": 0.42,
-            "extracting": 0.74,
-            "indexing": 0.90,
-            "done": 1.00,
-        }.get(phase, 0.0)
-        weighted = int(round((base + (phase_fraction / total)) * 95))
-        self.upload_progress_pct = max(self.upload_progress_pct, min(95, weighted))
+        """Set flow-based percent from real pipeline checkpoints."""
+        total_files = max(1, int(self.upload_total_files))
+        index = min(max(1, int(file_idx)), total_files)
+        steps_per_file = 4  # extracting -> uploading -> indexing -> done
+        phase_step = {
+            "extracting": 1,
+            "uploading": 2,
+            "indexing": 3,
+            "done": 4,
+        }.get(phase, 0)
+        completed_steps = ((index - 1) * steps_per_file) + phase_step
+        total_steps = total_files * steps_per_file
+        pct = int(round((completed_steps / total_steps) * 100))
+        self.upload_progress_pct = max(self.upload_progress_pct, min(100, pct))
+
+    def _upload_pipeline_outcome(
+        self,
+        status: str,
+        *,
+        flushes: int = 0,
+        events: list[rx.event.EventSpec] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "status": status,
+            "flushes": max(0, int(flushes)),
+            "events": events or [],
+        }
+
+    async def _run_single_upload_pipeline_step(
+        self,
+        *,
+        file_idx: int,
+        file: rx.UploadFile,
+        storage,
+        target_folder: str,
+        uploaded_names: list[str],
+        existing_names: set[str],
+        seen_batch: set[str],
+        clear_zone_id: str,
+        stream_updates: bool,
+    ) -> dict[str, object]:
+        flushes = 0
+        normalized_name = normalize_item_name(file.filename)
+        lowered = normalized_name.lower()
+        # #region agent log
+        _agent_debug_log(
+            "state_actions_upload.py:_run_single_upload_pipeline_step:start",
+            "Pipeline step start",
+            {
+                "file_idx": int(file_idx),
+                "filename": str(file.filename),
+                "upload_cancel_requested": bool(self.upload_cancel_requested),
+                "stash_key": self._upload_stash_key(),
+            },
+            run_id="stop-debug",
+            hypothesis_id="H3",
+        )
+        # #endregion
+
+        def add_flush() -> None:
+            nonlocal flushes
+            if stream_updates:
+                flushes += 1
+
+        def cooperative_stop(message: str) -> dict[str, object]:
+            self.upload_error = message
+            self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
+            return self._upload_pipeline_outcome(
+                "stop",
+                flushes=flushes,
+                events=[rx.clear_selected_files(clear_zone_id), rx.toast.info(self.upload_error)],
+            )
+
+        if self.upload_cancel_requested:
+            return cooperative_stop("Stop execution.")
+
+        validation_error = validate_upload_filename(file.filename)
+        if validation_error:
+            self.upload_error = validation_error
+            return self._upload_pipeline_outcome("warning", flushes=flushes, events=[rx.toast.warning(self.upload_error)])
+
+        if lowered in existing_names:
+            self.upload_error = f"File '{normalized_name}' already exists in this folder."
+            return self._upload_pipeline_outcome("warning", flushes=flushes, events=[rx.toast.warning(self.upload_error)])
+        if lowered in seen_batch:
+            self.upload_error = f"Duplicate file in selection: '{normalized_name}'."
+            return self._upload_pipeline_outcome("warning", flushes=flushes, events=[rx.toast.warning(self.upload_error)])
+        seen_batch.add(lowered)
+
+        await file.seek(0)
+        file_bytes = await file.read()
+        await file.seek(0)
+        self.upload_stage = "extracting"
+        self.upload_stage_detail = f"Validating receipt {normalized_name}..."
+        self._set_upload_pipeline_progress(file_idx, "extracting")
+        add_flush()
+
+        if self.upload_cancel_requested:
+            return cooperative_stop("Stop execution.")
+
+        extraction_result = await run_upload_extraction(
+            ExtractionRequest(
+                filename=file.filename,
+                content_type=getattr(file, "content_type", None),
+                file_bytes=file_bytes,
+                storage_folder=target_folder,
+            )
+        )
+        # #region agent log
+        _agent_debug_log(
+            "state_actions_upload.py:_run_single_upload_pipeline_step:after_extraction",
+            "Extraction returned",
+            {
+                "file_idx": int(file_idx),
+                "filename": str(file.filename),
+                "extraction_status": str(getattr(extraction_result, "status", "")),
+                "upload_cancel_requested": bool(self.upload_cancel_requested),
+            },
+            run_id="stop-debug",
+            hypothesis_id="H5",
+        )
+        # #endregion
+        if extraction_result.status == "cancelled":
+            return cooperative_stop("Stop execution.")
+        if self.upload_cancel_requested:
+            return cooperative_stop("Upload cancelled by user.")
+
+        extracted_text = str(getattr(extraction_result, "text", "") or "").strip()
+        if extraction_result.status == "failed" or not extracted_text or not is_likely_receipt(extracted_text):
+            self.upload_error = f"Upload rejected: '{normalized_name}' is not a valid receipt."
+            return self._upload_pipeline_outcome("warning", flushes=flushes, events=[rx.toast.warning(self.upload_error)])
+
+        self.upload_stage = "uploading"
+        self.upload_stage_detail = f"Uploading receipt {normalized_name} ({file_idx}/{self.upload_total_files})..."
+        self._set_upload_pipeline_progress(file_idx, "uploading")
+        add_flush()
+        if self.upload_cancel_requested:
+            return cooperative_stop("Stop execution.")
+        # #region agent log
+        _agent_debug_log(
+            "state_actions_upload.py:_run_single_upload_pipeline_step:before_upload_fileobj",
+            "About to call storage.upload_fileobj",
+            {
+                "file_idx": int(file_idx),
+                "filename": str(file.filename),
+                "upload_cancel_requested": bool(self.upload_cancel_requested),
+            },
+            run_id="stop-debug",
+            hypothesis_id="H4",
+        )
+        # #endregion
+        storage.upload_fileobj(target_folder, file.filename, file.file)
+        # #region agent log
+        _agent_debug_log(
+            "state_actions_upload.py:_run_single_upload_pipeline_step:after_upload_fileobj",
+            "Returned from storage.upload_fileobj",
+            {
+                "file_idx": int(file_idx),
+                "filename": str(file.filename),
+                "upload_cancel_requested": bool(self.upload_cancel_requested),
+            },
+            run_id="stop-debug",
+            hypothesis_id="H4",
+        )
+        # #endregion
+        uploaded_names.append(file.filename)
+        self.upload_completed_files = len(uploaded_names)
+        add_flush()
+
+        file_key = f"{target_folder}/{normalized_name}"
+        self.upload_stage = "indexing"
+        self.upload_stage_detail = f"AI indexing {normalized_name} for search..."
+        self._set_upload_pipeline_progress(file_idx, "indexing")
+        add_flush()
+        if self.upload_cancel_requested:
+            self._reject_non_receipt_after_upload(storage, target_folder, normalized_name)
+            if uploaded_names and uploaded_names[-1] == file.filename:
+                uploaded_names.pop()
+            return cooperative_stop("Stop execution.")
+        enqueue_uploaded_document(
+            IndexingRequest(
+                file_key=file_key,
+                folder=target_folder,
+                filename=file.filename,
+                extracted_text=extracted_text,
+                doc_type=(normalized_name.rsplit(".", 1)[-1].lower() if "." in normalized_name else "file"),
+            )
+        )
+
+        self.upload_stage_detail = f"Receipt processed: {normalized_name}"
+        self._set_upload_pipeline_progress(file_idx, "done")
+        add_flush()
+        return self._upload_pipeline_outcome("continue", flushes=flushes)
+
+    def _reject_non_receipt_after_upload(self, storage, folder: str, filename: str) -> None:
+        """Remove uploaded object when receipt validation fails."""
+        try:
+            storage.delete_object(f"{folder}/{filename}")
+        except Exception:
+            # Keep original rejection reason as the user-facing error.
+            pass
+
+    def _finalize_upload_session_after_cooperative_stop(self, target_folder: str, uploaded_names: list[str]) -> None:
+        """Refresh explorer for files already completed; tear down modal queue (matches success-path cleanup)."""
+        if uploaded_names:
+            self._reload_folder_children(target_folder)
+            self.select_child_file(uploaded_names[-1])
+        self.show_drop_overlay = False
+        self.show_upload_confirm = False
+        self.show_panel_drop_confirm = False
+        self.excluded_upload_names = []
+        self.upload_queue_previews = []
+        self.upload_queue_pdf_pages = {}
+        self._stash_clear_modal_files()
+        self.show_queued_preview = False
+        self.queued_preview_name = ""
+        self.queued_preview_url = ""
+        self.queued_preview_kind = ""
+        self.queued_preview_pages = []
 
     def _stash_set_modal_files(self, files: list[rx.UploadFile]) -> None:
         """Store modal UploadFile objects outside declared state (not serialized)."""
@@ -173,13 +431,7 @@ class FilesUploadActionsMixin:
         self.show_upload_confirm = False
         self.show_panel_drop_confirm = False
         # Step 1: push loading state to UI immediately.
-        self.is_uploading = True
-        self.upload_error = ""
-        self.upload_progress_pct = 0
-        self.upload_stage = "preparing"
-        self.upload_stage_detail = "Validating receipt files..."
-        self.upload_completed_files = 0
-        self.upload_total_files = 0
+        self._begin_upload_loading_state(0)
         # Step 2: continue upload in next event tick.
         return type(self).run_confirmed_queue_upload
 
@@ -215,7 +467,7 @@ class FilesUploadActionsMixin:
             return
 
         self.upload_total_files = len(queued_files)
-        self.upload_progress_pct = 3
+        self.upload_progress_pct = 0
         yield
 
         try:
@@ -226,14 +478,19 @@ class FilesUploadActionsMixin:
             seen_batch: set[str] = set()
 
             for file_idx, file in enumerate(queued_files, start=1):
+                normalized_name = normalize_item_name(file.filename)
+                lowered = normalized_name.lower()
+                if self.upload_cancel_requested:
+                    self.upload_error = "Stop execution."
+                    self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
+                    yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
+                    yield rx.toast.info(self.upload_error)
+                    return
                 validation_error = validate_upload_filename(file.filename)
                 if validation_error:
                     self.upload_error = validation_error
                     yield rx.toast.warning(self.upload_error)
                     return
-
-                normalized_name = normalize_item_name(file.filename)
-                lowered = normalized_name.lower()
                 if lowered in existing_names:
                     self.upload_error = f"File '{normalized_name}' already exists in this folder."
                     yield rx.toast.warning(self.upload_error)
@@ -244,23 +501,19 @@ class FilesUploadActionsMixin:
                     return
                 seen_batch.add(lowered)
 
-                self.upload_stage = "uploading"
-                self.upload_stage_detail = f"Uploading receipt {normalized_name} ({file_idx}/{self.upload_total_files})..."
-                self._set_upload_pipeline_progress(file_idx, "uploading")
-                yield
-
                 await file.seek(0)
                 file_bytes = await file.read()
                 await file.seek(0)
-                storage.upload_fileobj(target_folder, file.filename, file.file)
-                uploaded_names.append(file.filename)
-                self.upload_completed_files = len(uploaded_names)
-                yield
-
                 self.upload_stage = "extracting"
-                self.upload_stage_detail = f"AI extracting text from {normalized_name}..."
+                self.upload_stage_detail = f"Validating receipt {normalized_name}..."
                 self._set_upload_pipeline_progress(file_idx, "extracting")
                 yield
+                if self.upload_cancel_requested:
+                    self.upload_error = "Stop execution."
+                    self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
+                    yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
+                    yield rx.toast.info(self.upload_error)
+                    return
                 extraction_result = await run_upload_extraction(
                     ExtractionRequest(
                         filename=file.filename,
@@ -269,34 +522,110 @@ class FilesUploadActionsMixin:
                         storage_folder=target_folder,
                     )
                 )
+                # #region agent log
+                _agent_debug_log(
+                    "state_actions_upload.py:run_confirmed_queue_upload:after_extraction",
+                    "Extraction returned",
+                    {
+                        "file_idx": int(file_idx),
+                        "filename": str(file.filename),
+                        "extraction_status": str(getattr(extraction_result, "status", "")),
+                        "upload_cancel_requested": bool(self.upload_cancel_requested),
+                    },
+                    run_id="stop-debug",
+                    hypothesis_id="H5",
+                )
+                # #endregion
+                if extraction_result.status == "cancelled":
+                    self.upload_error = "Stop execution."
+                    self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
+                    yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
+                    yield rx.toast.info(self.upload_error)
+                    return
+                if self.upload_cancel_requested:
+                    self.upload_error = "Upload cancelled by user."
+                    self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
+                    yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
+                    yield rx.toast.info(self.upload_error)
+                    return
 
-                if extraction_result.status == "failed":
-                    self.upload_error = (
-                        f"Upload succeeded but extraction failed for '{file.filename}': {extraction_result.error}"
-                    )
-                elif extraction_result.text:
-                    file_key = f"{target_folder}/{normalized_name}"
-                    self.upload_stage = "indexing"
-                    self.upload_stage_detail = f"AI indexing {normalized_name} for search..."
-                    self._set_upload_pipeline_progress(file_idx, "indexing")
-                    yield
-                    enqueue_uploaded_document(
-                        IndexingRequest(
-                            file_key=file_key,
-                            folder=target_folder,
-                            filename=file.filename,
-                            extracted_text=extraction_result.text,
-                            doc_type=(normalized_name.rsplit(".", 1)[-1].lower() if "." in normalized_name else "file"),
-                        )
-                    )
+                extracted_text = str(getattr(extraction_result, "text", "") or "").strip()
+                if extraction_result.status == "failed" or not extracted_text or not is_likely_receipt(extracted_text):
+                    self.upload_error = f"Upload rejected: '{normalized_name}' is not a valid receipt."
+                    yield rx.toast.warning(self.upload_error)
+                    return
 
+                self.upload_stage = "uploading"
+                self.upload_stage_detail = f"Uploading receipt {normalized_name} ({file_idx}/{self.upload_total_files})..."
+                self._set_upload_pipeline_progress(file_idx, "uploading")
+                yield
+                if self.upload_cancel_requested:
+                    self.upload_error = "Stop execution."
+                    self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
+                    yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
+                    yield rx.toast.info(self.upload_error)
+                    return
+                # #region agent log
+                _agent_debug_log(
+                    "state_actions_upload.py:run_confirmed_queue_upload:before_upload_fileobj",
+                    "About to call storage.upload_fileobj",
+                    {
+                        "file_idx": int(file_idx),
+                        "filename": str(file.filename),
+                        "upload_cancel_requested": bool(self.upload_cancel_requested),
+                    },
+                    run_id="stop-debug",
+                    hypothesis_id="H4",
+                )
+                # #endregion
+                storage.upload_fileobj(target_folder, file.filename, file.file)
+                # #region agent log
+                _agent_debug_log(
+                    "state_actions_upload.py:run_confirmed_queue_upload:after_upload_fileobj",
+                    "Returned from storage.upload_fileobj",
+                    {
+                        "file_idx": int(file_idx),
+                        "filename": str(file.filename),
+                        "upload_cancel_requested": bool(self.upload_cancel_requested),
+                    },
+                    run_id="stop-debug",
+                    hypothesis_id="H4",
+                )
+                # #endregion
+                uploaded_names.append(file.filename)
+                self.upload_completed_files = len(uploaded_names)
+                yield
+
+                file_key = f"{target_folder}/{normalized_name}"
+                self.upload_stage = "indexing"
+                self.upload_stage_detail = f"AI indexing {normalized_name} for search..."
+                self._set_upload_pipeline_progress(file_idx, "indexing")
+                yield
+                if self.upload_cancel_requested:
+                    self._reject_non_receipt_after_upload(storage, target_folder, normalized_name)
+                    if uploaded_names and uploaded_names[-1] == file.filename:
+                        uploaded_names.pop()
+                    self.upload_error = "Stop execution."
+                    self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
+                    yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
+                    yield rx.toast.info(self.upload_error)
+                    return
+                enqueue_uploaded_document(
+                    IndexingRequest(
+                        file_key=file_key,
+                        folder=target_folder,
+                        filename=file.filename,
+                        extracted_text=extracted_text,
+                        doc_type=(normalized_name.rsplit(".", 1)[-1].lower() if "." in normalized_name else "file"),
+                    )
+                )
                 self.upload_stage_detail = f"Receipt processed: {normalized_name}"
                 self._set_upload_pipeline_progress(file_idx, "done")
                 yield
 
             self.upload_stage = "finalizing"
             self.upload_stage_detail = "Refreshing file explorer..."
-            self.upload_progress_pct = max(self.upload_progress_pct, 97)
+            self.upload_progress_pct = max(self.upload_progress_pct, 99)
             yield
             self._reload_folder_children(target_folder)
             if uploaded_names:
@@ -322,8 +651,7 @@ class FilesUploadActionsMixin:
             yield rx.toast.success(f"Upload complete. Processed {len(uploaded_names)} receipt file(s).")
         except Exception as e:
             self.upload_error = f"Upload failed: {e}"
-            self.show_upload_confirm = False
-            self.show_panel_drop_confirm = False
+            self._reset_upload_loading_state()
             yield rx.toast.error(f"Upload failed: {e}")
         finally:
             self._reset_upload_loading_state()
@@ -514,14 +842,9 @@ class FilesUploadActionsMixin:
         self.show_upload_confirm = False
         self.show_panel_drop_confirm = False
         if start_loading:
-            self.is_uploading = True
-            self.upload_error = ""
-            self.upload_progress_pct = 0
-            self.upload_stage = "preparing"
-            self.upload_stage_detail = "Validating receipt files..."
-            self.upload_completed_files = 0
+            self._begin_upload_loading_state(len(queued_files))
         self.upload_total_files = len(queued_files)
-        self.upload_progress_pct = 3
+        self.upload_progress_pct = 0
 
         try:
             storage = self._get_storage()
@@ -531,66 +854,26 @@ class FilesUploadActionsMixin:
             seen_batch: set[str] = set()
 
             for file_idx, file in enumerate(queued_files, start=1):
-                validation_error = validate_upload_filename(file.filename)
-                if validation_error:
-                    self.upload_error = validation_error
-                    return rx.toast.warning(self.upload_error)
-                normalized_name = normalize_item_name(file.filename)
-                lowered = normalized_name.lower()
-                if lowered in existing_names:
-                    self.upload_error = f"File '{normalized_name}' already exists in this folder."
-                    return rx.toast.warning(self.upload_error)
-                if lowered in seen_batch:
-                    self.upload_error = f"Duplicate file in selection: '{normalized_name}'."
-                    return rx.toast.warning(self.upload_error)
-                seen_batch.add(lowered)
-
-                self.upload_stage = "uploading"
-                self.upload_stage_detail = (
-                    f"Uploading receipt {normalized_name} ({file_idx}/{self.upload_total_files})..."
+                step_result = await self._run_single_upload_pipeline_step(
+                    file_idx=file_idx,
+                    file=file,
+                    storage=storage,
+                    target_folder=target_folder,
+                    uploaded_names=uploaded_names,
+                    existing_names=existing_names,
+                    seen_batch=seen_batch,
+                    clear_zone_id=clear_zone_id,
+                    stream_updates=False,
                 )
-                self._set_upload_pipeline_progress(file_idx, "uploading")
-                await file.seek(0)
-                file_bytes = await file.read()
-                await file.seek(0)
-                storage.upload_fileobj(target_folder, file.filename, file.file)
-                uploaded_names.append(file.filename)
-
-                self.upload_stage = "extracting"
-                self.upload_stage_detail = f"AI extracting text from {normalized_name}..."
-                self._set_upload_pipeline_progress(file_idx, "extracting")
-                extraction_result = await run_upload_extraction(
-                    ExtractionRequest(
-                        filename=file.filename,
-                        content_type=getattr(file, "content_type", None),
-                        file_bytes=file_bytes,
-                        storage_folder=target_folder,
-                    )
-                )
-                if extraction_result.status == "failed":
-                    # Upload remains successful; extraction errors are surfaced as non-blocking notice.
-                    self.upload_error = f"Upload succeeded but extraction failed for '{file.filename}': {extraction_result.error}"
-                elif extraction_result.text:
-                    file_key = f"{target_folder}/{normalized_name}"
-                    self.upload_stage = "indexing"
-                    self.upload_stage_detail = f"AI indexing {normalized_name} for search..."
-                    self._set_upload_pipeline_progress(file_idx, "indexing")
-                    enqueue_uploaded_document(
-                        IndexingRequest(
-                            file_key=file_key,
-                            folder=target_folder,
-                            filename=file.filename,
-                            extracted_text=extraction_result.text,
-                            doc_type=(normalized_name.rsplit(".", 1)[-1].lower() if "." in normalized_name else "file"),
-                        )
-                    )
-                self.upload_completed_files = len(uploaded_names)
-                self.upload_stage_detail = f"Receipt processed: {normalized_name}"
-                self._set_upload_pipeline_progress(file_idx, "done")
+                if step_result["status"] != "continue":
+                    events = list(step_result["events"])
+                    if len(events) == 1:
+                        return events[0]
+                    return events
 
             self.upload_stage = "finalizing"
             self.upload_stage_detail = "Refreshing file explorer..."
-            self.upload_progress_pct = max(self.upload_progress_pct, 97)
+            self.upload_progress_pct = max(self.upload_progress_pct, 99)
             self._reload_folder_children(target_folder)
             if uploaded_names:
                 self.select_child_file(uploaded_names[-1])

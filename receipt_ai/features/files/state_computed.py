@@ -1,4 +1,5 @@
 import reflex as rx
+import time
 from typing import Any
 
 from receipt_ai.features.files.file_meta import child_file_meta
@@ -51,6 +52,18 @@ class FilesComputedMixin:
         if not detail:
             return "AI Receipt Log: waiting for upload events..."
         return f"AI Receipt Log: {detail}"
+
+    @rx.var
+    def show_stop_button(self) -> bool:
+        """Show Stop button until 10s after stop is requested."""
+        if not self.is_uploading:
+            return False
+        if not self.upload_cancel_requested:
+            return True
+        if int(self.upload_stop_requested_at_ms or 0) <= 0:
+            return True
+        elapsed = int(time.time() * 1000) - int(self.upload_stop_requested_at_ms)
+        return elapsed < 10_000
 
     @rx.var
     def queued_upload_count(self) -> int:
@@ -177,6 +190,11 @@ class FilesComputedMixin:
         """Count label for currently visible (filtered/searched) files."""
         count = len(self.visible_folder_children)
         return f"{count} visible"
+
+    @rx.var
+    def has_visible_children(self) -> bool:
+        """True when filtered file result has at least one row."""
+        return len(self.visible_folder_children) > 0
 
     @rx.var
     def stats_total_files(self) -> str:

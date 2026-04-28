@@ -67,6 +67,9 @@ class FilesState(
     # Files page layout: resizable sidebar (desktop) + mobile tree/content switch.
     sidebar_width_pct: int = 28
     files_mobile_view: str = "tree"
+    is_loading_files: bool = False
+    is_loading_folder: bool = False
+    loading_folder_name: str = ""
 
     files: list[dict[str, str]] = list_files_payload()
     selected_file_name: str = ""
@@ -91,6 +94,8 @@ class FilesState(
     show_drop_overlay: bool = False
     is_uploading: bool = False
     upload_progress_pct: int = 0
+    upload_cancel_requested: bool = False
+    upload_stop_requested_at_ms: int = 0
     upload_stage: str = ""
     upload_stage_detail: str = ""
     upload_total_files: int = 0
@@ -206,6 +211,20 @@ class FilesState(
     @rx.var
     def visible_child_count_label(self) -> str:
         return f"{len(self.visible_folder_children)} visible"
+
+    @rx.var
+    def show_no_results_hint(self) -> bool:
+        """Show no-results placeholder only for search/type-filter misses."""
+        has_query = str(self.search_query or "").strip() != ""
+        has_type_filter = str(self.active_type_filter or "").lower() != "all"
+        return (len(self.visible_folder_children) == 0) and (has_query or has_type_filter)
+
+    @rx.var
+    def show_empty_folder_hint(self) -> bool:
+        """Show empty-folder placeholder when selected folder has no files and no active filters."""
+        has_query = str(self.search_query or "").strip() != ""
+        has_type_filter = str(self.active_type_filter or "").lower() != "all"
+        return (len(self.active_folder_children) == 0) and (not has_query) and (not has_type_filter)
 
     @rx.var
     def stats_total_files(self) -> str:
@@ -409,8 +428,9 @@ class FilesState(
         return folder_name
 
     # --- Event handlers defined on FilesState (safe for Reflex binding) ---
-    async def load_files(self) -> None:
-        return await FilesCrudActionsMixin.load_files(self)
+    async def load_files(self):
+        async for event in FilesCrudActionsMixin.load_files(self):
+            yield event
 
     def open_new_folder_input(self) -> None:
         return FilesCrudActionsMixin.open_new_folder_input(self)
@@ -460,8 +480,9 @@ class FilesState(
     async def delete_child_file(self, filename: str) -> None:
         return await FilesCrudActionsMixin.delete_child_file(self, filename)
 
-    async def toggle_folder(self, folder_name: str) -> None:
-        return await FilesCrudActionsMixin.toggle_folder(self, folder_name)
+    async def toggle_folder(self, folder_name: str):
+        async for event in FilesCrudActionsMixin.toggle_folder(self, folder_name):
+            yield event
 
     def set_grid_view(self) -> None:
         return FilesCrudActionsMixin.set_grid_view(self)
@@ -516,6 +537,9 @@ class FilesState(
 
     def cancel_upload(self) -> list:
         return FilesUploadActionsMixin.cancel_upload(self)
+
+    def request_stop_upload(self) -> None:
+        return FilesUploadActionsMixin.request_stop_upload(self)
 
     def request_upload_confirm(self) -> None:
         return FilesUploadActionsMixin.request_upload_confirm(self)

@@ -1,3 +1,4 @@
+import asyncio
 import reflex as rx
 
 from receipt_ai.features.auth.state import AuthState
@@ -88,8 +89,10 @@ class FilesCrudActionsMixin:
         return False
 
     # Reload list from the service layer (used on page load).
-    async def load_files(self) -> None:
+    async def load_files(self):
         """Load files from wasabi and reflect them in the explorer list."""
+        self.is_loading_files = True
+        yield
         if not await self._ensure_files_read_permission():
             self.files = []
             self.folder_children = {}
@@ -101,7 +104,7 @@ class FilesCrudActionsMixin:
             return
         try:
             storage = self._get_storage()
-            folder_names = storage.list_folders()
+            folder_names = await asyncio.to_thread(storage.list_folders)
             if folder_names:
                 self.files = [
                     {"name": folder, "size": "-", "file_type": "folder", "status": "Ready"}
@@ -125,6 +128,8 @@ class FilesCrudActionsMixin:
             self._clear_preview_state()
         except Exception as e:
             self.upload_error = f"Failed to load files: {e}"
+        finally:
+            self.is_loading_files = False
 
     # Show inline input controls for creating a new folder.
     def open_new_folder_input(self) -> None:
@@ -386,10 +391,14 @@ class FilesCrudActionsMixin:
             return rx.toast.error(f"Failed to delete file: {e}")
 
     # Toggle the expansion state of a folder.
-    async def toggle_folder(self, folder_name: str) -> None:
+    async def toggle_folder(self, folder_name: str):
         """Toggle the expansion state of a folder."""
-        if not await self._ensure_files_read_permission():
-            return rx.toast.error(self.upload_error)
+        # Rename editor should appear only after explicit Edit click.
+        if self.show_rename_input:
+            self.show_rename_input = False
+            self.rename_value = ""
+            self.rename_save_btn_enabled = False
+            self.show_rename_confirm = False
         if self.expanded_folder_name == folder_name:
             self.expanded_folder_name = ""
             self.selected_file_name = ""
@@ -401,11 +410,20 @@ class FilesCrudActionsMixin:
         self.selected_child_file_name = ""
         self._clear_preview_state()
         self.upload_error = ""
+        # Reset result-narrowing controls on folder switch so users see all files first.
+        self.search_query = ""
+        self.active_type_filter = "all"
+        self.is_loading_folder = True
+        self.loading_folder_name = folder_name
+        yield
 
         try:
-            self._reload_folder_children(folder_name)
+            await asyncio.to_thread(self._reload_folder_children, folder_name)
         except Exception as e:
             self.upload_error = f"Failed to load folder files: {e}"
+        finally:
+            self.is_loading_folder = False
+            self.loading_folder_name = ""
 
     # Switch right panel into grid card mode.
     def set_grid_view(self) -> None:

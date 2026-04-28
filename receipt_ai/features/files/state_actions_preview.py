@@ -51,6 +51,12 @@ class FilesPreviewActionsMixin:
     # Select a file in the expanded folder (sidebar or main panel) and load preview.
     def select_child_file(self, filename: str) -> None:
         """Mark a child file as selected and refresh the inline preview URL."""
+        # Keep inline rename strictly edit-button initiated.
+        if self.show_rename_input:
+            self.show_rename_input = False
+            self.rename_value = ""
+            self.rename_save_btn_enabled = False
+            self.show_rename_confirm = False
         self.selected_child_file_name = filename
         self._refresh_preview_url()
 
