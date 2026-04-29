@@ -1,0 +1,20 @@
+---
+description: Require observability, incident readiness, and release discipline
+alwaysApply: true
+---
+
+# AI Ops and Release Discipline
+
+- For AI-related changes, include docs + operational readiness checks:
+  - observability signals/logging expectations
+  - incident handling readiness for high-risk changes
+  - release checklist evidence
+- Keep logs non-sensitive; do not expose secrets or raw sensitive payloads.
+- For risky AI changes, document rollback plan and owner.
+- Ensure related docs are updated when behavior/policy changes:
+  - `docs/OBSERVABILITY.md`
+  - `docs/INCIDENT_RUNBOOK.md`
+  - `docs/RELEASE_CHECKLIST.md`
+- Treat missing evaluation evidence as a merge blocker for prompt/retrieval/indexing/extraction changes.
+
+Reference: `docs/SECURITY_AI.md`, `docs/OBSERVABILITY.md`, `docs/INCIDENT_RUNBOOK.md`, `docs/RELEASE_CHECKLIST.md`

@@ -1,0 +1,18 @@
+---
+description: Enforce core architecture and safe change scope
+alwaysApply: true
+---
+
+# Core Architecture Safety
+
+- Keep `receipt_ai` modular boundaries intact:
+  - UI composition in `receipt_ai/pages/` and `receipt_ai/components/`
+  - orchestration in state classes
+  - business logic and I/O in `receipt_ai/features/*`
+  - persistence/schema in `receipt_ai/core/db/` and `alembic/versions/`
+- Do not refactor unrelated files while fixing scoped issues.
+- Prefer minimal, reversible changes over broad rewrites.
+- If schema changes, require migration + model alignment.
+- Never introduce or commit secrets (`.env`, tokens, credentials).
+
+Reference: `AGENT.md`

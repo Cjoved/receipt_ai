@@ -1,0 +1,20 @@
+---
+description: Enforce AI and RAG quality guardrails for prompt and retrieval work
+alwaysApply: true
+---
+
+# AI RAG Quality Guardrails
+
+- Separate diagnosis into stages before changing prompts:
+  1) extraction/indexing
+  2) retrieval mode/hit quality
+  3) prompt assembly
+  4) provider/runtime behavior
+- Preserve dual retrieval support:
+  - Qdrant-enabled path
+  - JSON fallback path
+- Prompt changes are behavioral changes; require evaluation evidence.
+- Reject fabricated citations and unsupported claims.
+- Keep receipt extraction safety intact (`NOT_RECEIPT`, validation failures).
+
+Reference: `docs/EVALUATION.md`, `docs/PROMPTS.md`, `docs/RAG_SETUP.md`

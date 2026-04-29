@@ -1,0 +1,19 @@
+---
+description: Reduce Reflex frontend regressions with deterministic debug flow
+alwaysApply: true
+---
+
+# Reflex Frontend Debug Flow
+
+- Treat `.web/` as generated output; never use it as source-of-truth.
+- Validate environment first for frontend issues:
+  - Python venv interpreter
+  - Node version compatibility
+  - successful Reflex rebuild output
+- Prefer state-binding fixes over styling hacks:
+  - verify component props map to `rx.State` fields/events
+  - preserve existing guard/redirect/toast patterns
+- Use smallest fix that resolves route-level behavior.
+- For frontend edits, verify on affected route and add/update tests when behavior changes.
+
+Reference: `AGENT.md`, `README.md`

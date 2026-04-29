@@ -40,6 +40,11 @@ For RAG/prompt/reference docs, see:
 - `docs/RAG_SETUP.md`
 - `docs/RECEIPT_VALIDATION.md`
 - `docs/IMPLEMENTATION_ROADMAP.md`
+- `docs/EVALUATION.md`
+- `docs/SECURITY_AI.md`
+- `docs/RELEASE_CHECKLIST.md`
+- `docs/OBSERVABILITY.md`
+- `docs/INCIDENT_RUNBOOK.md`
 
 ## Commands (Reflex 0.8+)
 
