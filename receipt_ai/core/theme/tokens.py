@@ -44,6 +44,7 @@ text_primary = theme_pair("#111827", "#f9fafb")
 text_secondary = theme_pair("#4b5563", "#d1d5db")
 text_muted = theme_pair("#6b7280", "#9ca3af")
 text_on_accent_soft = theme_pair(PALETTE_PRIMARY_DEEP, "#b9efc4")
+text_hint_soft = theme_pair("#9ca3af", "#6b7280")
 
 # ---------------------------------------------------------------------------
 # Accent — agri green (Technical AI primary)
@@ -53,6 +54,20 @@ accent_solid_hover = theme_pair("#145535", "#53b864")
 accent_soft_bg = theme_pair("#e8f7eb", "rgba(96, 202, 114, 0.18)")
 accent_soft_bg_strong = theme_pair("#d7f0dd", "rgba(96, 202, 114, 0.28)")
 accent_muted_fg = theme_pair(PALETTE_PRIMARY_DEEP, "#a7e8b2")
+accent_soft_border = theme_pair("#bbf7d0", "#2f5f3b")
+
+# ---------------------------------------------------------------------------
+# Chat semantic tokens (green/minimal shell)
+# ---------------------------------------------------------------------------
+chat_page_bg = theme_pair("#f8fafb", "#030712")
+chat_main_bg = theme_pair("#f0fdf4", "#07150f")
+chat_sidebar_bg = theme_pair("#ffffff", "#111827")
+chat_input_bg = theme_pair("#f9fafb", "#111827")
+chat_input_focus_bg = theme_pair("#ffffff", "#0f172a")
+chat_focus_ring = theme_pair("0 0 0 3px rgba(26, 107, 69, 0.08)", "0 0 0 3px rgba(96, 202, 114, 0.22)")
+chat_input_bg_strong = theme_pair("#ffffff", "#0f172a")
+chat_input_border_strong = theme_pair("#86cfa0", "#2f5f3b")
+chat_input_focus_border = theme_pair("#1a6b45", "#60ca72")
 
 # ---------------------------------------------------------------------------
 # Semantic (alerts, destructive — extend as needed)

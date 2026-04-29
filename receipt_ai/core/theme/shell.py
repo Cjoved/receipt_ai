@@ -40,6 +40,32 @@ NAV_SHELL_CSS = """
 [data-theme="dark"] .nav-brand-link:hover {
   background: var(--nav-brand-hover-dark, rgba(255, 255, 255, 0.06));
 }
+/* ── Nav pill active state: solid fill, white text, clear selection ── */
+.nav-pill-active {
+  background: #16a34a !important;
+  color: #ffffff !important;
+  border-color: #16a34a !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 4px rgba(22,163,74,0.28) !important;
+}
+.nav-pill-inactive {
+  color: var(--nav-pill-fg, #374151) !important;
+  background: transparent !important;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.nav-pill-inactive:hover {
+  background: rgba(22,163,74,0.08) !important;
+  color: #15803d !important;
+}
+.dark .nav-pill-inactive,
+[data-theme="dark"] .nav-pill-inactive {
+  color: #9ca3af !important;
+}
+.dark .nav-pill-inactive:hover,
+[data-theme="dark"] .nav-pill-inactive:hover {
+  background: rgba(34,197,94,0.12) !important;
+  color: #4ade80 !important;
+}
 .nav-desktop-only {
   display: none !important;
   align-items: center;
@@ -217,58 +243,116 @@ FILES_SHELL_CSS = """
 
 # Chat route: history ↔ content mobile switch, optional center + recent inner split.
 CHAT_SHELL_CSS = """
+/* ── Root shell: fills the height given by <main>, never expands page ── */
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── The flex row that holds sidebar | divider | main ────────────────── */
 .chat-split-inner {
   width: 100%;
+  /* Grow to fill chat-shell, never push it taller */
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
   align-items: stretch;
 }
+
+/* ── Left history sidebar ─────────────────────────────────────────────── */
 .chat-sidebar-col {
   width: 100%;
   box-sizing: border-box;
   min-width: 0;
+  /* Sidebar scrolls its own content */
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
 }
+
+/* ── Right main area (wraps center + recent) ─────────────────────────── */
 .chat-main-col {
   width: 100%;
   min-width: 0;
-  flex: 1 1 auto;
+  /* Must be 0-basis so it doesn't force the row taller */
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
+
+/* ── Inner row: center thread | recent column ────────────────────────── */
 .chat-inner-split {
   width: 100%;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-height: 0;
+  overflow: hidden;
   align-items: stretch;
 }
+
+/* ── Center panel wrapper ────────────────────────────────────────────── */
 .chat-center-wrap {
-  flex: 1 1 auto;
+  /* Takes all remaining width; must be 0-basis to avoid overflow */
+  flex: 1 1 0%;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
+
+/* ── Right recent column ─────────────────────────────────────────────── */
 .chat-recent-col {
   width: 100%;
   flex-shrink: 0;
   box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .chat-divider-col {
   display: none;
   flex-shrink: 0;
   align-self: stretch;
-  width: 18px;
-  min-width: 18px;
+  width: 10px;
+  min-width: 10px;
   cursor: col-resize;
   position: relative;
   z-index: 5;
 }
 .chat-mobile-bar {
-  display: none;
+  display: none !important;
+}
+.chat-mobile-toolbar {
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.45rem 0.75rem;
   border-bottom: 1px solid;
   border-color: var(--chat-border);
-  background: var(--chat-canvas);
+  background: var(--chat-sidebar-bg, #ffffff);
+}
+.chat-mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: none;
+  background: rgba(2, 6, 23, 0.35);
+}
+.chat-mobile-drawer-panel {
+  width: min(86vw, 340px);
+  height: 100%;
+  background: var(--chat-sidebar-bg, #ffffff);
+  border-right: 1px solid var(--chat-border);
+  box-shadow: 0 12px 24px rgba(2, 6, 23, 0.22);
+  padding: 0.75rem;
+}
+.chat-mobile-drawer-history {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 @media (min-width: 768px) {
   .chat-split-inner {
@@ -276,7 +360,7 @@ CHAT_SHELL_CSS = """
   }
   .chat-sidebar-col {
     width: var(--chat-sidebar-pct, 22%) !important;
-    max-width: min(560px, 60vw);
+    max-width: min(360px, 48vw);
     min-width: 220px;
     flex-shrink: 0;
   }
@@ -287,29 +371,50 @@ CHAT_SHELL_CSS = """
   .chat-divider-col {
     display: flex;
   }
-  .chat-mobile-bar {
+  .chat-mobile-toolbar {
+    display: none !important;
+  }
+  .chat-mobile-drawer-backdrop {
     display: none !important;
   }
 }
 @media (min-width: 1024px) {
   .chat-recent-col {
-    width: 280px !important;
+    width: 220px !important;
+    display: block;
     flex-shrink: 0;
   }
   .chat-inner-split {
     flex-direction: row !important;
   }
 }
-@media (max-width: 767px) {
-  .chat-shell[data-chat-view="content"] .chat-sidebar-col {
-    display: none !important;
-  }
-  .chat-shell[data-chat-view="history"] .chat-main-col {
+@media (max-width: 1023px) {
+  .chat-recent-col {
     display: none !important;
   }
 }
+@media (max-width: 767px) {
+  .chat-mobile-toolbar {
+    display: flex;
+  }
+  .chat-mobile-drawer-backdrop {
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+  .chat-shell .chat-sidebar-col {
+    display: none !important;
+  }
+  .chat-shell .chat-divider-col {
+    display: none !important;
+  }
+  .chat-shell .chat-main-col {
+    width: 100% !important;
+    flex: 1 1 auto;
+  }
+}
 .chat-divider-grip {
-  width: 10px;
+  width: 4px;
   align-self: stretch;
   min-height: 120px;
   border-radius: 4px;

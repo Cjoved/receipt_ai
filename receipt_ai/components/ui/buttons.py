@@ -47,12 +47,13 @@ def nav_button(label: str, href: str, active: bool, *, icon: str | None = None) 
 
 def panel_action_button(label: str, active: bool = False, size: str = "1", on_click=None) -> rx.Component:
     """Reusable chip for filters/sort (agri accent when active)."""
+    button_height = "30px" if size == "2" else "24px"
     return rx.button(
         label,
         variant="outline",
         size=size,
         on_click=on_click,
-        height="24px",
+        height=button_height,
         border_radius=RADIUS_SM,
         border_color=rx.cond(active, accent_muted_fg, border_default),
         color=rx.cond(active, accent_muted_fg, text_secondary),

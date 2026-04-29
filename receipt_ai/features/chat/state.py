@@ -48,6 +48,7 @@ new Promise((resolve) => {
     let p = ((e.clientX - r.left) / r.width) * 100;
     p = Math.max(15, Math.min(48, p));
     root.style.setProperty("--chat-sidebar-pct", p + "%");
+    root.style.setProperty("--chat-sidebar-px", p + "%");
   };
   const up = () => {
     document.removeEventListener("mousemove", move);
@@ -85,7 +86,8 @@ class ChatState(rx.State):
     last_failed_file_key: str = ""
 
     chat_sidebar_width_pct: int = 22
-    chat_mobile_view: str = "history"
+    chat_mobile_view: str = "content"
+    chat_history_drawer_open: bool = False
     show_new_chat_confirm: bool = False
     show_delete_chat_confirm: bool = False
     pending_delete_conversation_id: str = ""
@@ -196,6 +198,10 @@ class ChatState(rx.State):
         if assistant_part:
             return assistant_part[:96]
         return "Conversation thread"
+
+    def _sync_mobile_view_default(self) -> None:
+        """Mobile is chat-first; history opens via drawer."""
+        self.chat_mobile_view = "content"
 
     def _stash_set_chat_files(self, files: list[rx.UploadFile]) -> None:
         _CHAT_UPLOAD_FILES_BY_KEY[self._upload_stash_key()] = list(files)
@@ -773,6 +779,7 @@ class ChatState(rx.State):
             self.message_feedback = {}
             self.streaming_text = ""
             await self.load_suggestions()
+            self._sync_mobile_view_default()
             return self.scroll_chat_to_latest()
         self.sidebar_threads = await list_chat_payload(auth.user_id)
         if not self.sidebar_threads:
@@ -781,12 +788,14 @@ class ChatState(rx.State):
             self.message_feedback = {}
             self.streaming_text = ""
             await self.load_suggestions()
+            self._sync_mobile_view_default()
             return self.scroll_chat_to_latest()
         if not self.active_conversation_id:
             self.active_conversation_id = str(self.sidebar_threads[0].get("id", ""))
         self.streaming_text = ""
         await self._load_active_conversation_messages()
         await self.load_suggestions()
+        self._sync_mobile_view_default()
         return self.scroll_chat_to_latest()
 
     async def refresh_threads(self):
@@ -807,6 +816,8 @@ class ChatState(rx.State):
 
     async def select_conversation(self, conversation_id: str) -> None:
         self.active_conversation_id = conversation_id
+        self.chat_mobile_view = "content"
+        self.chat_history_drawer_open = False
         self.streaming_text = ""
         await self._load_active_conversation_messages()
         yield self.scroll_chat_to_latest()
@@ -1595,6 +1606,8 @@ class ChatState(rx.State):
         self.draft_message = ""
         self.streaming_text = ""
         self.active_conversation_id = ""
+        self.chat_mobile_view = "content"
+        self.chat_history_drawer_open = False
         self.suggested_prompts = build_hybrid_suggestions(folder_name="", file_name="")
 
     def new_chat(self) -> None:
@@ -1621,8 +1634,18 @@ class ChatState(rx.State):
         )
 
     def show_chat_history_mobile(self) -> None:
-        self.chat_mobile_view = "history"
+        self.chat_history_drawer_open = True
 
     def show_chat_content_mobile(self) -> None:
         self.chat_mobile_view = "content"
+        self.chat_history_drawer_open = False
         return self.scroll_chat_to_latest()
+
+    def open_chat_history_drawer(self) -> None:
+        self.chat_history_drawer_open = True
+
+    def close_chat_history_drawer(self) -> None:
+        self.chat_history_drawer_open = False
+
+    def toggle_chat_history_drawer(self) -> None:
+        self.chat_history_drawer_open = not self.chat_history_drawer_open
