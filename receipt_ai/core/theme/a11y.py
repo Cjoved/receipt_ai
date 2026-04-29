@@ -23,8 +23,8 @@ body {
   font-size: 0.875rem;
   text-decoration: none;
   background: var(--gray-1, #ffffff);
-  color: var(--green-11, #15803d);
-  border: 2px solid var(--green-9, #16a34a);
+  color: var(--green-11, #1a6b45);
+  border: 2px solid var(--green-9, #60ca72);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 .skip-to-main:focus {

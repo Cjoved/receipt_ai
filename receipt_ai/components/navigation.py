@@ -10,6 +10,7 @@ from receipt_ai.core.theme.tokens import (
     RADIUS_MD,
     SHADOW_NAV,
     accent_muted_fg,
+    accent_solid,
     accent_soft_bg,
     border_default,
     nav_border,
@@ -112,7 +113,7 @@ def _account_menu() -> rx.Component:
                 border_bottom=f"1px solid {border_default}",
             ),
             rx.dropdown_menu.separator(),
-            rx.dropdown_menu.item("Settings", on_click=AuthState.go_to_settings),
+            rx.dropdown_menu.item("Profile", on_click=AuthState.go_to_settings),
             rx.dropdown_menu.item("Log out", on_click=AuthState.logout),
             side="bottom",
             align="end",
@@ -177,7 +178,7 @@ def top_nav(active_page: str) -> rx.Component:
                     rx.hstack(
                         rx.link(
                             rx.hstack(
-                                rx.icon("leaf", size=18, color="green"),
+                                rx.icon("leaf", size=18, color=accent_solid),
                                 rx.heading("Receipt AI", size="4", color=APP_FOREGROUND),
                                 spacing="2",
                                 align="center",

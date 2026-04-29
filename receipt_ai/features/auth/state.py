@@ -1,11 +1,17 @@
 import reflex as rx
 
+from receipt_ai.features.auth.config import AuthConfig
 from receipt_ai.features.auth.service import (
     authenticate_user,
     create_session_token,
     delete_session_token,
     get_session_user,
+    register_user,
+    request_email_verification,
+    request_password_reset,
+    reset_password_with_token,
     update_user_display_name,
+    verify_email_with_token,
 )
 
 
@@ -38,13 +44,24 @@ class AuthState(rx.State):
 
     email: str = ""
     password: str = ""
+    register_email: str = ""
+    register_password: str = ""
+    register_password_confirm: str = ""
+    register_display_name: str = ""
+    forgot_email: str = ""
+    reset_token: str = ""
+    reset_password: str = ""
+    reset_password_confirm: str = ""
+    verify_token: str = ""
     show_password: bool = False
     auth_error: str = ""
+    auth_info: str = ""
     is_submitting: bool = False
     is_authenticated: bool = False
     user_id: str = ""
     user_display_name: str = "Demo user"
     auth_token: str = ""
+    email_verified: bool = False
     user_roles: list[str] = []
     user_permissions: list[str] = []
     primary_role: str = "user"
@@ -80,6 +97,7 @@ class AuthState(rx.State):
 
     def clear_auth_error(self) -> None:
         self.auth_error = ""
+        self.auth_info = ""
 
     def clear_settings_feedback(self) -> None:
         self.settings_error = ""
@@ -153,6 +171,7 @@ class AuthState(rx.State):
         self.is_authenticated = True
         self.user_id = user.id
         self.email = user.email
+        self.email_verified = bool(getattr(user, "email_verified", False))
         self.user_display_name = user.display_name
         self.settings_display_name = user.display_name
         self.user_roles = list(user.roles)
@@ -162,6 +181,7 @@ class AuthState(rx.State):
     def _clear_auth_identity(self) -> None:
         self.auth_token = ""
         self.is_authenticated = False
+        self.email_verified = False
         self.user_id = ""
         self.user_display_name = "Demo user"
         self.user_roles = []
@@ -174,14 +194,20 @@ class AuthState(rx.State):
         password = self.password
 
         self.auth_error = ""
+        self.auth_info = ""
         if not email or not password:
             self.auth_error = "Email and password are required."
             return None
 
         self.is_submitting = True
         try:
-            user = await authenticate_user(email, password)
+            user = await authenticate_user(email, password, identity_key=email)
             if user is not None:
+                cfg = AuthConfig.from_env()
+                if cfg.require_email_verified and not user.email_verified:
+                    self.auth_error = "Please verify your email before signing in."
+                    self.auth_info = "Check your inbox for the verification link."
+                    return None
                 token = await create_session_token(user.id)
                 self.auth_token = token
                 self._apply_auth_user(user)
@@ -224,6 +250,10 @@ class AuthState(rx.State):
             self._clear_auth_identity()
             return rx.redirect("/login")
         self._apply_auth_user(user)
+        cfg = AuthConfig.from_env()
+        if cfg.require_email_verified and not user.email_verified:
+            self.auth_info = "Please verify your email to continue."
+            return rx.redirect("/verify-email")
         if not self.settings_display_name:
             self.settings_display_name = self.user_display_name
         return None
@@ -247,6 +277,157 @@ class AuthState(rx.State):
                 return None
             if user is not None:
                 self._apply_auth_user(user)
+                cfg = AuthConfig.from_env()
+                if cfg.require_email_verified and not user.email_verified:
+                    self.auth_info = "Please verify your email to continue."
+                    return rx.redirect("/verify-email")
                 return rx.redirect(post_login_route_value(self.user_roles))
             self._clear_auth_identity()
         return None
+
+    async def register(self):
+        email = self.register_email.strip().lower()
+        password = self.register_password
+        confirm = self.register_password_confirm
+        display_name = self.register_display_name.strip()
+        self.auth_error = ""
+        self.auth_info = ""
+        if not email or not password or not confirm:
+            self.auth_error = "Email and password are required."
+            return None
+        if password != confirm:
+            self.auth_error = "Password confirmation does not match."
+            return None
+        self.is_submitting = True
+        try:
+            await register_user(
+                email=email,
+                password=password,
+                display_name=(display_name or "User"),
+                identity_key=email,
+            )
+            self.auth_info = "Registration successful. Check your email for verification link."
+            self.register_password = ""
+            self.register_password_confirm = ""
+            return rx.redirect("/verify-email")
+        except Exception as exc:
+            self.auth_error = str(exc) or "Registration failed."
+            return None
+        finally:
+            self.is_submitting = False
+
+    async def request_password_reset(self):
+        email = self.forgot_email.strip().lower()
+        self.auth_error = ""
+        self.auth_info = ""
+        if not email:
+            self.auth_error = "Email is required."
+            return None
+        self.is_submitting = True
+        try:
+            await request_password_reset(email, identity_key=email)
+            self.auth_info = "If the email exists, a password reset link was sent."
+            return None
+        except Exception as exc:
+            self.auth_error = str(exc) or "Password reset request failed."
+            return None
+        finally:
+            self.is_submitting = False
+
+    async def submit_password_reset(self):
+        token = self.reset_token.strip()
+        password = self.reset_password
+        confirm = self.reset_password_confirm
+        self.auth_error = ""
+        self.auth_info = ""
+        if not token or not password or not confirm:
+            self.auth_error = "Token and new password are required."
+            return None
+        if password != confirm:
+            self.auth_error = "Password confirmation does not match."
+            return None
+        self.is_submitting = True
+        try:
+            user = await reset_password_with_token(token, password)
+            if user is None:
+                self.auth_error = "Invalid or expired reset token."
+                return None
+            self.auth_info = "Password updated. You can sign in now."
+            self.reset_password = ""
+            self.reset_password_confirm = ""
+            return rx.redirect("/login")
+        except Exception as exc:
+            self.auth_error = str(exc) or "Password reset failed."
+            return None
+        finally:
+            self.is_submitting = False
+
+    async def resend_verification(self):
+        email = self.email.strip().lower()
+        if not email:
+            email = self.register_email.strip().lower()
+        self.auth_error = ""
+        self.auth_info = ""
+        if not email:
+            self.auth_error = "Provide your account email first."
+            return None
+        self.is_submitting = True
+        try:
+            await request_email_verification(email, identity_key=email)
+            self.auth_info = "Verification email sent (if account is eligible)."
+            return None
+        except Exception as exc:
+            self.auth_error = str(exc) or "Unable to send verification email."
+            return None
+        finally:
+            self.is_submitting = False
+
+    async def verify_email(self):
+        token = self.verify_token.strip()
+        self.auth_error = ""
+        self.auth_info = ""
+        if not token:
+            self.auth_error = "Verification token is required."
+            return None
+        self.is_submitting = True
+        try:
+            user = await verify_email_with_token(token)
+            if user is None:
+                self.auth_error = "Invalid or expired verification token."
+                return None
+            self.auth_info = "Email verified successfully. You can now sign in."
+            return rx.redirect("/login")
+        except Exception as exc:
+            self.auth_error = str(exc) or "Email verification failed."
+            return None
+        finally:
+            self.is_submitting = False
+
+    def go_to_register(self):
+        return rx.redirect("/register")
+
+    def go_to_forgot_password(self):
+        return rx.redirect("/forgot-password")
+
+    def go_to_login(self):
+        return rx.redirect("/login")
+
+    def load_reset_route(self):
+        router = getattr(self, "router_data", None)
+        params = getattr(router, "query_params", {}) if router is not None else {}
+        token = ""
+        if isinstance(params, dict):
+            raw = params.get("token", "")
+            token = str(raw[0] if isinstance(raw, list) and raw else raw).strip()
+        if token:
+            self.reset_token = token
+
+    def load_verify_route(self):
+        router = getattr(self, "router_data", None)
+        params = getattr(router, "query_params", {}) if router is not None else {}
+        token = ""
+        if isinstance(params, dict):
+            raw = params.get("token", "")
+            token = str(raw[0] if isinstance(raw, list) and raw else raw).strip()
+        if token:
+            self.verify_token = token

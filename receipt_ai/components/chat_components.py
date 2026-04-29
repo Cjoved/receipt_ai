@@ -16,6 +16,8 @@ from receipt_ai.core.constants import (
 from receipt_ai.core.theme.tokens import (
     RADIUS_LG,
     SHADOW_SM,
+    accent_solid,
+    accent_solid_hover,
     accent_muted_fg,
     accent_soft_bg,
     border_accent,
@@ -25,7 +27,7 @@ from receipt_ai.core.theme.tokens import (
 from receipt_ai.features.chat.state import ChatState
 from receipt_ai.features.auth.state import AuthState
 
-_USER_BUBBLE_BG = _mode("#16a34a", "#22c55e")
+_USER_BUBBLE_BG = accent_solid
 _PANEL_TINT = _mode("rgba(248,250,252,0.92)", "rgba(9,18,36,0.82)")
 
 
@@ -267,7 +269,7 @@ def _chat_user_bubble(m, idx) -> rx.Component:
                     height="28px",
                     flex_shrink="0",
                     border_radius="8px",
-                    background=_mode("linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)", "linear-gradient(135deg, #0f766e 0%, #115e59 100%)"),
+                    background=_mode("linear-gradient(135deg, #2aa765 0%, #1a6b45 100%)", "linear-gradient(135deg, #1a6b45 0%, #274b31 100%)"),
                     box_shadow="0 2px 8px rgba(20, 184, 166, 0.3)",
                 ),
                 justify="end",
@@ -347,7 +349,7 @@ def _chat_assistant_bubble(m, idx) -> rx.Component:
                     height="28px",
                     flex_shrink="0",
                     border_radius="8px",
-                    background="linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
+                    background="linear-gradient(135deg, #60ca72 0%, #1a6b45 100%)",
                     box_shadow="0 2px 8px rgba(34, 197, 94, 0.28)",
                 ),
                 rx.box(
@@ -593,7 +595,7 @@ def _chat_thinking_row() -> rx.Component:
             height="28px",
             flex_shrink="0",
             border_radius="8px",
-            background="linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
+            background="linear-gradient(135deg, #60ca72 0%, #1a6b45 100%)",
             box_shadow="0 2px 8px rgba(34, 197, 94, 0.28)",
         ),
         rx.box(
@@ -628,7 +630,7 @@ def _chat_streaming_row() -> rx.Component:
                 height="28px",
                 flex_shrink="0",
                 border_radius="8px",
-                background="linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
+                background="linear-gradient(135deg, #60ca72 0%, #1a6b45 100%)",
                 box_shadow="0 2px 8px rgba(34, 197, 94, 0.28)",
             ),
             rx.box(
@@ -1235,7 +1237,7 @@ def chat_center_panel() -> rx.Component:
                                     width="56px",
                                     height="56px",
                                     border_radius="16px",
-                                    background="linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
+                                    background="linear-gradient(135deg, #60ca72 0%, #1a6b45 100%)",
                                     box_shadow="0 10px 28px rgba(34, 197, 94, 0.35)",
                                 ),
                                 rx.heading(

@@ -4,6 +4,8 @@ from receipt_ai.core.constants import ICON_SIZE_SM, SECONDARY_TEXT
 from receipt_ai.core.theme.tokens import (
     RADIUS_MD,
     RADIUS_SM,
+    accent_solid,
+    accent_solid_hover,
     accent_muted_fg,
     accent_soft_bg,
     accent_soft_bg_strong,
@@ -64,7 +66,14 @@ def panel_action_button(label: str, active: bool = False, size: str = "1", on_cl
 
 def primary_action_button(label: str, width: str = "auto") -> rx.Component:
     """Primary CTA (agri)."""
-    return rx.button(label, width=width, color_scheme="green")
+    return rx.button(
+        label,
+        width=width,
+        bg=accent_solid,
+        color=theme_pair("#ffffff", "#102214"),
+        _hover={"bg": accent_solid_hover},
+        _active={"transform": "translateY(1px)"},
+    )
 
 
 def icon_button(

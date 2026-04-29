@@ -21,6 +21,7 @@ from receipt_ai.core.upload_constants import (
     FILES_UPLOAD_ZONE_ID,
 )
 from receipt_ai.core.theme.tokens import (
+    PALETTE_PRIMARY_LIGHT,
     SHADOW_SM,
     accent_muted_fg,
     accent_soft_bg,
@@ -30,7 +31,7 @@ from receipt_ai.core.theme.tokens import (
     theme_pair as _mode,
 )
 
-_AGRI_ROW_BORDER = _mode("1px solid #bbf7d0", "1px solid #14532d")
+_AGRI_ROW_BORDER = _mode("1px solid #b7eac0", "1px solid #2f5f3b")
 from receipt_ai.features.files.state import FilesState
 
 UPLOAD_ZONE_ID = FILES_UPLOAD_ZONE_ID
@@ -239,7 +240,7 @@ def files_explorer_no_folder_placeholder() -> rx.Component:
     return rx.box(
         rx.vstack(
             rx.box(
-                rx.icon("folder-open", size=40, color=accent_muted_fg),
+                rx.icon("folder-open", size=40, color=PALETTE_PRIMARY_LIGHT),
                 padding="1.25rem",
                 border_radius="16px",
                 bg=accent_soft_bg,
@@ -314,7 +315,7 @@ def files_empty_folder_placeholder() -> rx.Component:
     return rx.box(
         rx.vstack(
             rx.box(
-                rx.icon("folder-open", size=34, color=accent_muted_fg),
+                rx.icon("folder-open", size=34, color=PALETTE_PRIMARY_LIGHT),
                 padding="0.95rem",
                 border_radius="14px",
                 bg=accent_soft_bg,
@@ -862,7 +863,7 @@ def file_tree() -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.hstack(
-                rx.icon("folder", size=ICON_SIZE_XS, color=accent_muted_fg),
+                rx.icon("folder", size=ICON_SIZE_XS, color=PALETTE_PRIMARY_LIGHT),
                 rx.heading(
                     "Explorer",
                     size="3",
@@ -986,7 +987,7 @@ def file_tree() -> rx.Component:
                                 rx.text(item["name"], size=TEXT_SIZE_MD, color=rx.color("gray", 12)),
                             ),
                             rx.spacer(),
-                            rx.box(width="6px", height="6px", border_radius="999px", bg="#22c55e"),
+                            rx.box(width="6px", height="6px", border_radius="999px", bg="#60ca72"),
                             spacing="2",
                             align="center",
                             width="100%",
@@ -1048,7 +1049,7 @@ def file_tree() -> rx.Component:
                                                         "#a855f7",
                                                         rx.cond(
                                                             child["badge"] == "green",
-                                                            "#22c55e",
+                                                            "#60ca72",
                                                             rx.cond(
                                                                 child["badge"] == "blue",
                                                                 "#3b82f6",
@@ -1545,7 +1546,7 @@ def files_panel() -> rx.Component:
         rx.vstack(
             rx.hstack(
                 rx.hstack(
-                    rx.icon("folder-open", size=16, color=accent_muted_fg),
+                    rx.icon("folder-open", size=16, color=PALETTE_PRIMARY_LIGHT),
                     rx.heading(
                         rx.cond(
                             FilesState.expanded_folder_name != "",
@@ -1602,7 +1603,7 @@ def files_panel() -> rx.Component:
                             value=FilesState.search_query,
                             on_change=FilesState.set_search_query,
                             size="2",
-                            width="320px",
+                            width=rx.breakpoints(initial="100%", sm="320px"),
                             bg=_mode("#ffffff", "#071126"),
                             border=f"1px solid {BORDER_COLOR}",
                             color=_mode("#0f172a", "#d6deff"),
@@ -1743,7 +1744,7 @@ def files_panel() -> rx.Component:
         ),
         spacing="4",
         width="100%",
-        min_height="calc(100vh - 130px)",
+        min_height=rx.breakpoints(initial="calc(100vh - 110px)", md="calc(100vh - 130px)"),
         align="start",
         bg=PANEL_BG,
         border=f"1px solid {BORDER_COLOR}",

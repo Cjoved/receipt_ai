@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import reflex as rx
 
+PALETTE_PRIMARY_LIGHT = "#60ca72"
+PALETTE_PRIMARY_DEEP = "#1a6b45"
+
 
 def theme_pair(light: str, dark: str):
     """Theme-aware color (matches Reflex light/dark mode). Public API for components."""
@@ -32,7 +35,7 @@ surface_inset = theme_pair("#e5e7eb", "#0b1220")
 # ---------------------------------------------------------------------------
 border_default = theme_pair("#e5e7eb", "#374151")
 border_strong = theme_pair("#d1d5db", "#4b5563")
-border_accent = theme_pair("#bbf7d0", "#14532d")
+border_accent = theme_pair("#b7eac0", "#2f5f3b")
 
 # ---------------------------------------------------------------------------
 # Text
@@ -40,22 +43,22 @@ border_accent = theme_pair("#bbf7d0", "#14532d")
 text_primary = theme_pair("#111827", "#f9fafb")
 text_secondary = theme_pair("#4b5563", "#d1d5db")
 text_muted = theme_pair("#6b7280", "#9ca3af")
-text_on_accent_soft = theme_pair("#14532d", "#86efac")
+text_on_accent_soft = theme_pair(PALETTE_PRIMARY_DEEP, "#b9efc4")
 
 # ---------------------------------------------------------------------------
 # Accent — agri green (Technical AI primary)
 # ---------------------------------------------------------------------------
-accent_solid = theme_pair("#16a34a", "#22c55e")
-accent_solid_hover = theme_pair("#15803d", "#16a34a")
-accent_soft_bg = theme_pair("#ecfdf5", "rgba(34, 197, 94, 0.14)")
-accent_soft_bg_strong = theme_pair("#d1fae5", "rgba(34, 197, 94, 0.22)")
-accent_muted_fg = theme_pair("#15803d", "#4ade80")
+accent_solid = theme_pair(PALETTE_PRIMARY_DEEP, PALETTE_PRIMARY_LIGHT)
+accent_solid_hover = theme_pair("#145535", "#53b864")
+accent_soft_bg = theme_pair("#e8f7eb", "rgba(96, 202, 114, 0.18)")
+accent_soft_bg_strong = theme_pair("#d7f0dd", "rgba(96, 202, 114, 0.28)")
+accent_muted_fg = theme_pair(PALETTE_PRIMARY_DEEP, "#a7e8b2")
 
 # ---------------------------------------------------------------------------
 # Semantic (alerts, destructive — extend as needed)
 # ---------------------------------------------------------------------------
-success_fg = theme_pair("#15803d", "#86efac")
-success_bg_soft = theme_pair("#dcfce7", "rgba(34, 197, 94, 0.12)")
+success_fg = theme_pair(PALETTE_PRIMARY_DEEP, "#a7e8b2")
+success_bg_soft = theme_pair("#e8f7eb", "rgba(96, 202, 114, 0.16)")
 danger_fg = theme_pair("#dc2626", "#f87171")
 danger_bg_soft = theme_pair("#fef2f2", "rgba(248, 113, 113, 0.12)")
 

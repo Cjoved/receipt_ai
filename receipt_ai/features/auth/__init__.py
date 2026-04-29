@@ -7,8 +7,13 @@ from receipt_ai.features.auth.service import (
     get_user_by_email,
     list_user_permissions,
     list_user_roles,
+    register_user,
+    request_email_verification,
+    request_password_reset,
+    reset_password_with_token,
     upsert_user,
     user_has_permission,
+    verify_email_with_token,
 )
 from receipt_ai.features.auth.state import AuthState
 
@@ -22,6 +27,11 @@ __all__ = [
     "get_user_by_email",
     "list_user_permissions",
     "list_user_roles",
+    "register_user",
+    "request_email_verification",
+    "request_password_reset",
+    "reset_password_with_token",
     "upsert_user",
     "user_has_permission",
+    "verify_email_with_token",
 ]

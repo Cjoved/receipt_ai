@@ -6,9 +6,13 @@ from receipt_ai.features.chat.state import ChatState
 from receipt_ai.features.files.state import FilesState
 from receipt_ai.pages.chat_page import chat_page
 from receipt_ai.pages.files_page import files_page
+from receipt_ai.pages.forgot_password_page import forgot_password_page
 from receipt_ai.pages.login_page import login_page
 from receipt_ai.pages.not_found_page import not_found_page
+from receipt_ai.pages.register_page import register_page
+from receipt_ai.pages.reset_password_page import reset_password_page
 from receipt_ai.pages.settings_page import settings_page
+from receipt_ai.pages.verify_email_page import verify_email_page
 
 
 def create_app() -> rx.App:
@@ -30,6 +34,12 @@ def create_app() -> rx.App:
         html_lang="en",
         style={
             "scrollBehavior": "smooth",
+            # Override Radix green scale so `color_scheme="green"` matches brand palette.
+            "--green-3": "#e8f7eb",
+            "--green-6": "#b7eac0",
+            "--green-9": "#60ca72",
+            "--green-10": "#53b864",
+            "--green-11": "#1a6b45",
         },
     )
     app.add_page(
@@ -61,6 +71,34 @@ def create_app() -> rx.App:
         on_load=AuthState.guard_login_route,
     )
     app.add_page(
+        register_page,
+        route="/register",
+        title="Receipt AI — Register",
+        description="Create a new Receipt AI account.",
+        on_load=AuthState.guard_login_route,
+    )
+    app.add_page(
+        forgot_password_page,
+        route="/forgot-password",
+        title="Receipt AI — Forgot Password",
+        description="Request a password reset for your account.",
+        on_load=AuthState.guard_login_route,
+    )
+    app.add_page(
+        reset_password_page,
+        route="/reset-password",
+        title="Receipt AI — Reset Password",
+        description="Set a new password with a reset token.",
+        on_load=AuthState.load_reset_route,
+    )
+    app.add_page(
+        verify_email_page,
+        route="/verify-email",
+        title="Receipt AI — Verify Email",
+        description="Verify your email address to activate account access.",
+        on_load=AuthState.load_verify_route,
+    )
+    app.add_page(
         not_found_page,
         route=Page404.SLUG,
         title="Page not found — Receipt AI",
@@ -69,8 +107,8 @@ def create_app() -> rx.App:
     app.add_page(
         settings_page,
         route="/settings",
-        title="Receipt AI — Settings",
-        description="Manage your account settings and workspace preferences.",
+        title="Receipt AI — Profile",
+        description="Manage your profile identity and workspace preferences.",
         on_load=[AuthState.guard_protected_route, AuthState.load_settings_form],
     )
     return app
