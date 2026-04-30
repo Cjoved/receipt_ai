@@ -1,20 +1,12 @@
 import reflex as rx
-from reflex.components.core.breakpoints import breakpoints as bp
 
-from receipt_ai.components.app_footer import app_footer
 from receipt_ai.components.file_components import file_tree, files_panel, upload_overlay
 from receipt_ai.components.navigation import top_nav
 from receipt_ai.components.skip_link import skip_to_main
-from receipt_ai.components.ui.buttons import panel_action_button
-from receipt_ai.core.constants import (
-    APP_BACKGROUND,
-    APP_FOREGROUND,
-    BORDER_COLOR,
-    NAV_HEIGHT,
-)
+from receipt_ai.core.constants import APP_FOREGROUND, BORDER_COLOR, NAV_HEIGHT
 from receipt_ai.core.theme.a11y import A11Y_GLOBAL_CSS
 from receipt_ai.core.theme.shell import FILES_SHELL_CSS
-from receipt_ai.core.theme.tokens import theme_pair as _mode
+from receipt_ai.core.theme.tokens import chat_main_bg, chat_page_bg, theme_pair as _mode
 from receipt_ai.features.files.state import FilesState
 
 
@@ -28,27 +20,26 @@ def files_page() -> rx.Component:
         rx.el.main(
             rx.box(
                 rx.vstack(
-                    rx.hstack(
-                        panel_action_button(
-                            "Folders",
-                            active=FilesState.files_mobile_view == "tree",
-                            on_click=FilesState.show_files_tree_mobile,
-                        ),
-                        panel_action_button(
-                            "Files",
-                            active=FilesState.files_mobile_view == "content",
-                            on_click=FilesState.show_files_content_mobile,
-                        ),
-                        width="100%",
-                        align="center",
-                        class_name="files-mobile-bar",
-                    ),
                     rx.box(
+                        rx.cond(
+                            FilesState.sidebar_open,
+                            rx.box(
+                                position="fixed",
+                                top="0",
+                                left="0",
+                                width="100vw",
+                                height="100vh",
+                                background="rgba(0,0,0,0.4)",
+                                z_index="40",
+                                on_click=FilesState.close_sidebar,
+                                display=["flex", "none", "none", "none"],
+                            ),
+                        ),
                         rx.flex(
                             rx.box(
                                 file_tree(),
                                 class_name="files-sidebar-col",
-                                padding="0.75rem",
+                                padding="12px",
                                 border_right=f"1px solid {BORDER_COLOR}",
                             ),
                             rx.box(
@@ -64,33 +55,50 @@ def files_page() -> rx.Component:
                             rx.box(
                                 files_panel(),
                                 class_name="files-main-col",
-                                padding="0.75rem 1rem",
-                                min_height=shell_min_h,
+                                padding=["12px", "16px", "20px", "24px"],
+                                flex="1",
+                                display="flex",
+                                flex_direction="column",
+                                overflow_x="hidden",
+                                overflow_y="auto",
+                                width=["100%", "auto", "auto", "auto"],
+                                min_height="0",
                             ),
                             class_name="files-split-inner",
-                            direction=bp(initial="column", md="row"),
+                            display="flex",
+                            flex_direction=rx.breakpoints(initial="column", md="row"),
                             width="100%",
-                            min_height=shell_min_h,
+                            height="100%",
+                            min_height="0",
                             align="stretch",
+                            overflow="hidden",
+                            position="relative",
                         ),
                         class_name="files-shell",
                         id="files-split-root",
                         width="100%",
-                        data_files_view=FilesState.files_mobile_view,
+                        height="100%",
+                        min_height="0",
+                        data_files_view=rx.cond(FilesState.sidebar_open, "tree", "content"),
                         style={
                             "--files-sidebar-pct": FilesState.sidebar_width_css,
                             "--files-border": BORDER_COLOR,
-                            "--files-canvas": _mode("#f9fafb", "#030712"),
+                            "--files-canvas": chat_page_bg,
+                            "--files-main-bg": chat_main_bg,
                             "--files-subtle": _mode("#f3f4f6", "#1f2937"),
                             "--files-divider-hover": _mode("rgba(22, 163, 74, 0.14)", "rgba(34, 197, 94, 0.22)"),
                         },
+                        position="relative",
+                        overflow="hidden",
                     ),
-                    app_footer(),
                     spacing="0",
                     width="100%",
+                    height="100%",
+                    min_height="0",
                     style={
                         "--files-border": BORDER_COLOR,
-                        "--files-canvas": _mode("#f9fafb", "#030712"),
+                        "--files-canvas": chat_page_bg,
+                        "--files-main-bg": chat_main_bg,
                         "--files-subtle": _mode("#f3f4f6", "#1f2937"),
                     },
                 ),
@@ -119,19 +127,44 @@ def files_page() -> rx.Component:
                         padding="1rem",
                     ),
                 ),
+                rx.button(
+                    rx.icon("menu", size=20, color="white"),
+                    on_click=FilesState.toggle_sidebar,
+                    display=["flex", "none", "none", "none"],
+                    position="fixed",
+                    bottom="16px",
+                    right="16px",
+                    z_index="100",
+                    background="#1a6b45",
+                    color="white",
+                    border_radius="50%",
+                    width="48px",
+                    height="48px",
+                    min_width="48px",
+                    min_height="48px",
+                    box_shadow="0 4px 12px rgba(26,107,69,0.3)",
+                    _hover={"background": "#145535"},
+                ),
                 position="relative",
                 width="100%",
+                height="100%",
             ),
             id="main-content",
             tab_index=-1,
             width="100%",
-            flex="1",
+            flex="1 1 0%",
+            height=shell_min_h,
+            min_height="0",
+            overflow="hidden",
             outline="none",
+            display="flex",
+            flex_direction="column",
         ),
         upload_overlay(),
-        bg=APP_BACKGROUND,
+        bg=chat_page_bg,
         color=APP_FOREGROUND,
-        min_height="100vh",
+        height="100vh",
+        overflow="hidden",
         display="flex",
         flex_direction="column",
     )

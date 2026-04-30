@@ -4,7 +4,6 @@ from receipt_ai.components.ui.buttons import nav_button
 from receipt_ai.core.constants import APP_FOREGROUND, MUTED_TEXT, SECONDARY_TEXT
 from receipt_ai.core.theme.shell import NAV_SHELL_CSS
 from receipt_ai.core.theme.tokens import (
-    BLUR_NAV,
     NAV_HEIGHT,
     RADIUS_FULL,
     RADIUS_MD,
@@ -14,7 +13,6 @@ from receipt_ai.core.theme.tokens import (
     accent_soft_bg,
     border_default,
     nav_border,
-    nav_surface,
     surface_panel,
     text_muted,
     text_primary,
@@ -96,6 +94,7 @@ def _account_menu() -> rx.Component:
                         weight="medium",
                         color=APP_FOREGROUND,
                         class_name="nav-account-label",
+                        display=["none", "none", "flex", "flex"],
                     ),
                     rx.icon("chevron-down", size=14, color=SECONDARY_TEXT),
                     spacing="2",
@@ -135,6 +134,7 @@ def _mobile_nav_toggle() -> rx.Component:
         on_click=NavState.toggle_mobile_nav,
         title="Menu",
         class_name="nav-mobile-only",
+        display=["flex", "none", "none", "none"],
     )
 
 
@@ -179,7 +179,15 @@ def top_nav(active_page: str) -> rx.Component:
                         rx.link(
                             rx.hstack(
                                 rx.icon("leaf", size=18, color=accent_solid),
-                                rx.heading("Receipt AI", size="4", color=APP_FOREGROUND),
+                                rx.text(
+                                    "Receipt AI",
+                                    style={
+                                        "fontSize": "17px",
+                                        "fontWeight": "700",
+                                        "color": accent_solid,
+                                        "letterSpacing": "-0.02em",
+                                    },
+                                ),
                                 spacing="2",
                                 align="center",
                             ),
@@ -194,6 +202,7 @@ def top_nav(active_page: str) -> rx.Component:
                             nav_button("Chat", "/chat", chat_active, icon="message-circle"),
                             spacing="2",
                             class_name="nav-desktop-only",
+                            display=["none", "flex", "flex", "flex"],
                         ),
                         spacing="3",
                         align="center",
@@ -203,13 +212,15 @@ def top_nav(active_page: str) -> rx.Component:
                         rx.color_mode.button(),
                         _account_menu(),
                         _mobile_nav_toggle(),
-                        spacing="2",
+                        spacing="0",
+                        gap=["8px", "12px", "16px", "16px"],
                         align="center",
                     ),
                     justify="between",
                     align="center",
                     width="100%",
                     class_name="nav-shell-inner nav-shell-row",
+                    padding=["0 12px", "0 16px", "0 20px", "0 24px"],
                 ),
                 rx.box(
                     rx.vstack(
@@ -250,8 +261,8 @@ def top_nav(active_page: str) -> rx.Component:
             z_index="50",
             width="100%",
             border_bottom=f"1px solid {nav_border}",
-            bg=nav_surface,
-            backdrop_filter=f"blur({BLUR_NAV})",
+            bg=surface_panel,
+            backdrop_filter="none",
             box_shadow=SHADOW_NAV,
             min_height=NAV_HEIGHT,
             aria_label="Primary navigation",

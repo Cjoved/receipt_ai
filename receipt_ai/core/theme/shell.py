@@ -7,7 +7,7 @@ sidebar, agri divider grip. Each route injects its own ``rx.el.style(...)`` bloc
 # Primary nav (Phase 1): TA-style logo row, desktop pills, mobile sheet, account label.
 NAV_SHELL_CSS = """
 .nav-shell-row {
-  min-height: 3.5rem;
+  min-height: 52px;
   gap: 0.75rem;
   flex-wrap: nowrap;
 }
@@ -16,14 +16,8 @@ NAV_SHELL_CSS = """
   max-width: 100%;
   margin-left: auto;
   margin-right: auto;
-  padding-left: max(1rem, env(safe-area-inset-left, 0px));
-  padding-right: max(1rem, env(safe-area-inset-right, 0px));
-}
-@media (min-width: 1024px) {
-  .nav-shell-inner {
-    padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
-    padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
-  }
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
 }
 .nav-brand-link {
   border-radius: 0.5rem;
@@ -40,31 +34,56 @@ NAV_SHELL_CSS = """
 [data-theme="dark"] .nav-brand-link:hover {
   background: var(--nav-brand-hover-dark, rgba(255, 255, 255, 0.06));
 }
-/* ── Nav pill active state: solid fill, white text, clear selection ── */
-.nav-pill-active {
-  background: #16a34a !important;
-  color: #ffffff !important;
-  border-color: #16a34a !important;
-  font-weight: 600 !important;
-  box-shadow: 0 1px 4px rgba(22,163,74,0.28) !important;
+/* ── Nav tabs: underline active (Files/Chat spec) ── */
+.nav-tab-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: stretch;
 }
-.nav-pill-inactive {
-  color: var(--nav-pill-fg, #374151) !important;
+.nav-tab-btn svg {
+  color: inherit;
+}
+.nav-tab-btn {
   background: transparent !important;
-  transition: background 0.15s ease, color 0.15s ease;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #6b7280 !important;
+  font-weight: 500 !important;
+  padding: 0.35rem 0.5rem !important;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent !important;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.nav-pill-inactive:hover {
-  background: rgba(22,163,74,0.08) !important;
-  color: #15803d !important;
+.nav-tab-btn:hover {
+  color: #374151 !important;
+  background: transparent !important;
 }
-.dark .nav-pill-inactive,
-[data-theme="dark"] .nav-pill-inactive {
+.nav-tab-btn--active {
+  color: #1a6b45 !important;
+  font-weight: 600 !important;
+  border-bottom-color: #1a6b45 !important;
+}
+.nav-tab-btn--active:hover {
+  color: #1a6b45 !important;
+  background: transparent !important;
+}
+.dark .nav-tab-btn,
+[data-theme="dark"] .nav-tab-btn {
   color: #9ca3af !important;
 }
-.dark .nav-pill-inactive:hover,
-[data-theme="dark"] .nav-pill-inactive:hover {
-  background: rgba(34,197,94,0.12) !important;
-  color: #4ade80 !important;
+.dark .nav-tab-btn:hover,
+[data-theme="dark"] .nav-tab-btn:hover {
+  color: #d1d5db !important;
+}
+.dark .nav-tab-btn--active,
+[data-theme="dark"] .nav-tab-btn--active {
+  color: #a7e8b2 !important;
+  border-bottom-color: #60ca72 !important;
+}
+.dark .nav-tab-btn--active:hover,
+[data-theme="dark"] .nav-tab-btn--active:hover {
+  color: #a7e8b2 !important;
 }
 .nav-desktop-only {
   display: none !important;
@@ -163,6 +182,8 @@ FILES_SHELL_CSS = """
   width: 100%;
   min-width: 0;
   flex: 1 1 auto;
+  background: var(--files-main-bg, #f0fdf4);
+  box-sizing: border-box;
 }
 .files-divider-col {
   display: none;
@@ -172,11 +193,12 @@ FILES_SHELL_CSS = """
 .files-mobile-bar {
   display: none;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.5rem 20px;
   border-bottom: 1px solid;
-  border-color: var(--files-border);
-  background: var(--files-canvas);
+  border-color: var(--files-border, #e5e7eb);
+  background: var(--files-canvas, #f8fafb);
 }
 @media (min-width: 768px) {
   .files-split-inner {
@@ -200,6 +222,23 @@ FILES_SHELL_CSS = """
   }
 }
 @media (max-width: 767px) {
+  .files-shell .files-sidebar-col {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(86vw, 340px);
+    max-width: 100vw;
+    z-index: 50;
+    background: var(--files-canvas, #f8fafb);
+    overflow-y: auto;
+  }
+  .files-shell .files-divider-col {
+    display: none !important;
+  }
+  .files-shell .files-main-col {
+    width: 100% !important;
+  }
   .files-shell[data-files-view="content"] .files-sidebar-col {
     display: none !important;
   }
@@ -221,7 +260,7 @@ FILES_SHELL_CSS = """
 }
 .files-grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 0.75rem;
   align-items: stretch;
 }
@@ -229,15 +268,20 @@ FILES_SHELL_CSS = """
   box-sizing: border-box;
   min-height: 200px;
 }
-.files-view-toggle {
-  position: relative;
-  z-index: 2;
-  isolation: isolate;
-  gap: 0.375rem;
+/* Index chip on grid cards: normalize lowercase API values (e.g. completed → Completed). */
+.files-grid-index-badge {
+  text-transform: capitalize;
 }
 .files-no-folder-placeholder {
   box-sizing: border-box;
   padding: 0.5rem 0.25rem;
+}
+.files-data-table tbody tr.files-table-row:hover td {
+  background: #f0fdf4;
+}
+.dark .files-data-table tbody tr.files-table-row:hover td,
+[data-theme="dark"] .files-data-table tbody tr.files-table-row:hover td {
+  background: rgba(96, 202, 114, 0.12);
 }
 """
 

@@ -95,7 +95,13 @@ RADIUS_FULL = "9999px"
 SHADOW_SM = "0 1px 2px rgba(0, 0, 0, 0.05)"
 SHADOW_MD = "0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05)"
 SHADOW_LG = "0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05)"
-SHADOW_NAV = "0 1px 3px 0 rgba(0, 0, 0, 0.06)"
+SHADOW_NAV = "0 1px 4px rgba(0, 0, 0, 0.04)"
 
 BLUR_NAV = "12px"
-NAV_HEIGHT = "3.5rem"
+NAV_HEIGHT = "52px"
+
+# Files main panel card (light/dark)
+files_panel_card_shadow = theme_pair(
+    "0 2px 12px rgba(0, 0, 0, 0.04)",
+    "0 2px 12px rgba(0, 0, 0, 0.35)",
+)

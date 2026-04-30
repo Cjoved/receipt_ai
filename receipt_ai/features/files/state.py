@@ -67,6 +67,7 @@ class FilesState(
     # Files page layout: resizable sidebar (desktop) + mobile tree/content switch.
     sidebar_width_pct: int = 28
     files_mobile_view: str = "tree"
+    sidebar_open: bool = False
     is_loading_files: bool = False
     is_loading_folder: bool = False
     loading_folder_name: str = ""
@@ -393,12 +394,28 @@ class FilesState(
     def set_files_mobile_view(self, view: str) -> None:
         if view in ("tree", "content"):
             self.files_mobile_view = view
+            if view == "content":
+                self.sidebar_open = False
 
     def show_files_tree_mobile(self) -> None:
         self.files_mobile_view = "tree"
+        self.sidebar_open = True
 
     def show_files_content_mobile(self) -> None:
         self.files_mobile_view = "content"
+        self.sidebar_open = False
+
+    def toggle_sidebar(self) -> None:
+        self.sidebar_open = not self.sidebar_open
+        if self.sidebar_open:
+            self.files_mobile_view = "tree"
+
+    def open_sidebar(self) -> None:
+        self.sidebar_open = True
+        self.files_mobile_view = "tree"
+
+    def close_sidebar(self) -> None:
+        self.sidebar_open = False
 
     def _resolve_storage_folder_name(self, folder_name: str) -> str:
         """Map UI folder label to actual Wasabi folder key when names differ."""

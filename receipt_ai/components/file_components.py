@@ -22,11 +22,17 @@ from receipt_ai.core.upload_constants import (
 )
 from receipt_ai.core.theme.tokens import (
     PALETTE_PRIMARY_LIGHT,
+    RADIUS_SM,
     SHADOW_SM,
     accent_muted_fg,
     accent_soft_bg,
     accent_soft_bg_strong,
+    accent_soft_border,
     border_accent,
+    chat_focus_ring,
+    chat_input_bg,
+    chat_input_focus_border,
+    files_panel_card_shadow,
     text_primary,
     theme_pair as _mode,
 )
@@ -38,15 +44,122 @@ UPLOAD_ZONE_ID = FILES_UPLOAD_ZONE_ID
 
 
 TABLE_HEADER_BASE_STYLE = {
-    "padding": "0.5rem 0.65rem",
+    "padding": "10px 16px",
     "textAlign": "left",
     "fontSize": "11px",
-    "color": _mode("#64748b", "#7f95c1"),
+    "textTransform": "uppercase",
+    "color": _mode("#6b7280", "#9ca3af"),
     "fontWeight": "600",
-    "letterSpacing": "0.02em",
-    "background": _mode("#f1f5fb", "#0c1a33"),
-    "borderBottom": f"1px solid {_mode('#d8e3f3', '#1a2e52')}",
+    "letterSpacing": "0.5px",
+    "background": _mode("#f9fafb", "#111827"),
+    "borderBottom": f"1px solid {_mode('#e5e7eb', '#374151')}",
 }
+
+
+def _files_view_toggle_btn(
+    icon: str,
+    title: str,
+    *,
+    active,
+    on_click,
+) -> rx.Component:
+    """Grid/List segment: fill on outer box; soft corners (RADIUS_SM); button is hit-area only."""
+    return rx.box(
+        rx.button(
+            rx.icon(tag=icon, size=ICON_SIZE_SM, color="inherit"),
+            variant="ghost",
+            size="1",
+            on_click=on_click,
+            title=title,
+            width="100%",
+            height="100%",
+            min_width="100%",
+            min_height="100%",
+            padding="0",
+            margin="0",
+            border="none",
+            border_radius=RADIUS_SM,
+            cursor="pointer",
+            position="relative",
+            z_index="1",
+            isolation="isolate",
+            bg="transparent",
+            color=rx.cond(active, "#ffffff", "#9ca3af"),
+            box_shadow="none",
+            _hover={"background": "transparent"},
+            _focus_visible={
+                "outline": "2px solid",
+                "outline_color": accent_muted_fg,
+                "outline_offset": "2px",
+            },
+        ),
+        width="32px",
+        height="28px",
+        min_width="32px",
+        min_height="28px",
+        flex_shrink="0",
+        flex_grow="0",
+        position="relative",
+        isolation="isolate",
+        border_radius=RADIUS_SM,
+        display=["none", "flex", "flex", "flex"],
+        align_items="center",
+        justify_content="center",
+        bg=rx.cond(active, "#1a6b45", "transparent"),
+        _hover={
+            "background": rx.cond(active, "#145535", "rgba(26, 107, 69, 0.1)"),
+        },
+    )
+
+
+def _files_panel_view_toggle() -> rx.Component:
+    """Pill container: toggles hug content (no dead space); gap keeps highlights apart."""
+    return rx.box(
+        _files_view_toggle_btn(
+            "layout-grid",
+            "Grid view",
+            active=FilesState.view_mode == "grid",
+            on_click=FilesState.set_grid_view,
+        ),
+        _files_view_toggle_btn(
+            "list",
+            "List view",
+            active=FilesState.view_mode == "list",
+            on_click=FilesState.set_list_view,
+        ),
+        display="flex",
+        flex_direction="row",
+        align_items="center",
+        justify_content="center",
+        flex_wrap="nowrap",
+        gap="8px",
+        padding="6px",
+        width="max-content",
+        max_width="100%",
+        bg=_mode("#f3f4f6", "#1a2332"),
+        border_radius="10px",
+        border=f"1px solid {_mode('#e5e7eb', '#2d3748')}",
+        z_index="2",
+    )
+
+
+def _explorer_legend_pill(label: str) -> rx.Component:
+    """Private/Public legend chips (Files spec)."""
+    return rx.box(
+        rx.text(
+            label,
+            style={
+                "fontSize": "10px",
+                "fontWeight": "500",
+                "lineHeight": "1.2",
+                "color": accent_muted_fg,
+            },
+        ),
+        padding="2px 8px",
+        border_radius="20px",
+        border=f"1px solid {accent_soft_border}",
+        bg=_mode("#f0fdf4", "rgba(96, 202, 114, 0.12)"),
+    )
 
 def upload_modal_primary_cta() -> rx.Component:
     """Primary Upload in the modal — static label; counts live in `upload_queue_summary_label` under the row."""
@@ -67,6 +180,19 @@ def upload_modal_primary_cta() -> rx.Component:
         variant="solid",
         color_scheme="green",
         min_width="168px",
+    )
+
+
+def _file_type_icon_color(child: dict[str, str]):
+    """Map file badge scheme to icon color so list/grid icon tone matches file type."""
+    return rx.match(
+        child.get("badge", "gray"),
+        ("red", _mode("#dc2626", "#f87171")),
+        ("blue", _mode("#2563eb", "#60a5fa")),
+        ("green", _mode("#16a34a", "#4ade80")),
+        ("purple", _mode("#7c3aed", "#c084fc")),
+        ("orange", _mode("#ea580c", "#fb923c")),
+        _mode("#6b7280", "#9ca3af"),
     )
 
 
@@ -863,46 +989,64 @@ def file_tree() -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.hstack(
-                rx.icon("folder", size=ICON_SIZE_XS, color=PALETTE_PRIMARY_LIGHT),
-                rx.heading(
+                rx.icon("folder", size=ICON_SIZE_XS, color=accent_muted_fg),
+                rx.text(
                     "Explorer",
-                    size="3",
-                    weight="bold",
-                    color=text_primary,
-                    style={"letterSpacing": "-0.02em"},
+                    style={
+                        "fontSize": "13px",
+                        "fontWeight": "600",
+                        "color": text_primary,
+                        "letterSpacing": "-0.02em",
+                    },
                 ),
                 spacing="2",
                 align="center",
             ),
+            rx.button(
+                rx.icon("x", size=14, color="inherit"),
+                variant="ghost",
+                size="1",
+                on_click=FilesState.close_sidebar,
+                display=["flex", "none", "none", "none"],
+                title="Close explorer",
+            ),
             rx.spacer(),
             rx.hstack(
-                rx.badge("Private", variant="soft", color_scheme="green", size="1"),
-                rx.badge("Public", variant="outline", color_scheme="gray", size="1"),
+                _explorer_legend_pill("Private"),
+                _explorer_legend_pill("Public"),
                 spacing="1",
             ),
             rx.hstack(
-                icon_button("folder-plus", "New folder", on_click=FilesState.open_new_folder_input),
+                icon_button(
+                    "folder-plus",
+                    "New folder",
+                    on_click=FilesState.open_new_folder_input,
+                    variant="explorer",
+                ),
                 icon_button(
                     "pencil",
                     "Rename",
                     on_click=FilesState.open_rename_input,
                     disabled=FilesState.expanded_folder_name == "",
+                    variant="explorer",
                 ),
                 icon_button(
                     "upload",
                     "Upload",
                     on_click=FilesState.open_upload_input,
                     disabled=FilesState.expanded_folder_name == "",
+                    variant="explorer",
                 ),
                 icon_button(
                     "trash",
                     "Delete",
                     on_click=FilesState.request_delete_confirm,
                     disabled=FilesState.expanded_folder_name == "",
+                    variant="explorer",
                 ),
                 spacing="3",
             ),
-            icon_button("rotate-cw", "Refresh list", on_click=FilesState.load_files),
+            icon_button("rotate-cw", "Refresh list", on_click=FilesState.load_files, variant="explorer"),
             width="100%",
             align="center",
             flex_wrap="wrap",
@@ -984,7 +1128,22 @@ def file_tree() -> rx.Component:
                                     align="center",
                                     width="100%",
                                 ),
-                                rx.text(item["name"], size=TEXT_SIZE_MD, color=rx.color("gray", 12)),
+                                rx.text(
+                                    item["name"],
+                                    style={
+                                        "fontSize": "13px",
+                                        "fontWeight": rx.cond(
+                                            item["name"] == FilesState.expanded_folder_name,
+                                            "500",
+                                            "400",
+                                        ),
+                                        "color": rx.cond(
+                                            item["name"] == FilesState.expanded_folder_name,
+                                            accent_muted_fg,
+                                            _mode("#374151", "#d1d5db"),
+                                        ),
+                                    },
+                                ),
                             ),
                             rx.spacer(),
                             rx.box(width="6px", height="6px", border_radius="999px", bg="#60ca72"),
@@ -992,22 +1151,34 @@ def file_tree() -> rx.Component:
                             align="center",
                             width="100%",
                         ),
-                        padding="0.42rem 0.58rem",
-                        border_radius="6px",
-                        # Highlight selected row with subtle background.
+                        padding_top="8px",
+                        padding_bottom="8px",
+                        padding_right="12px",
+                        padding_left=rx.cond(
+                            item["name"] == FilesState.expanded_folder_name,
+                            "9px",
+                            "12px",
+                        ),
+                        border_radius="8px",
+                        border_left=rx.cond(
+                            item["name"] == FilesState.expanded_folder_name,
+                            "3px solid #1a6b45",
+                            "3px solid transparent",
+                        ),
                         bg=rx.cond(
                             item["name"] == FilesState.expanded_folder_name,
-                            accent_soft_bg_strong,
+                            _mode("#f0fdf4", "rgba(26, 107, 69, 0.22)"),
                             "transparent",
-                        ),
-                        border=rx.cond(
-                            item["name"] == FilesState.expanded_folder_name,
-                            _AGRI_ROW_BORDER,
-                            "1px solid transparent",
                         ),
                         width="100%",
                         cursor="pointer",
-                        _hover={"bg": accent_soft_bg},
+                        _hover={
+                            "background": rx.cond(
+                                item["name"] == FilesState.expanded_folder_name,
+                                _mode("#f0fdf4", "rgba(26, 107, 69, 0.22)"),
+                                _mode("#f0fdf4", "rgba(96, 202, 114, 0.1)"),
+                            ),
+                        },
                         on_click=rx.cond(
                             (FilesState.show_rename_input)
                             & (FilesState.selected_child_file_name == "")
@@ -1166,58 +1337,93 @@ def file_tree() -> rx.Component:
         width="100%",
         align="start",
         bg=PANEL_BG,
-        border=f"1px solid {BORDER_COLOR}",
+        border=f"1px solid {_mode('#e5e7eb', '#374151')}",
         border_radius="12px",
-        padding="0.65rem 0.75rem",
+        padding="12px",
         box_shadow=SHADOW_SM,
     )
 def active_child_file_card(child: dict[str, str]) -> rx.Component:
-    """Card used in grid view with status + metadata."""
+    """Card used in grid view: badges wrap (no overflow); filename ellipsis; even vertical rhythm."""
+    badge_radius = "full"
+    file_icon_color = _file_type_icon_color(child)
     return rx.box(
         rx.vstack(
-            rx.hstack(
-                rx.icon(tag=child["icon"], size=ICON_SIZE_MD),
-                rx.badge(child["ext"], color_scheme=child["badge"], variant="soft", size="1"),
-                rx.spacer(),
-                rx.badge(
-                    child.get("status", "Completed"),
-                    color_scheme="green",
-                    variant="soft",
-                    size="1",
+            rx.vstack(
+                rx.hstack(
+                    rx.icon(tag=child["icon"], size=ICON_SIZE_MD, color=file_icon_color),
+                    rx.badge(
+                        child["ext"],
+                        color_scheme=child["badge"],
+                        variant="soft",
+                        size="1",
+                        radius=badge_radius,
+                    ),
+                    spacing="2",
+                    align="center",
                 ),
-                rx.badge(
-                    child.get("index_status", "—"),
-                    color_scheme=rx.cond(
-                        child.get("index_status", "") == "completed",
-                        "green",
-                        rx.cond(
-                            child.get("index_status", "") == "processing",
-                            "yellow",
+                rx.hstack(
+                    rx.badge(
+                        child.get("status", "Completed"),
+                        color_scheme="green",
+                        variant="soft",
+                        size="1",
+                        radius=badge_radius,
+                    ),
+                    rx.badge(
+                        child.get("index_status", "—"),
+                        color_scheme=rx.cond(
+                            child.get("index_status", "") == "completed",
+                            "green",
                             rx.cond(
-                                child.get("index_status", "") == "failed",
-                                "red",
-                                "gray",
+                                child.get("index_status", "") == "processing",
+                                "yellow",
+                                rx.cond(
+                                    child.get("index_status", "") == "failed",
+                                    "red",
+                                    "gray",
+                                ),
                             ),
                         ),
+                        variant="soft",
+                        size="1",
+                        radius=badge_radius,
+                        class_name="files-grid-index-badge",
                     ),
-                    variant="soft",
-                    size="1",
+                    spacing="2",
+                    align="center",
+                    flex_wrap="wrap",
+                    width="100%",
                 ),
                 spacing="2",
-                align="center",
+                align="start",
                 width="100%",
+                min_width="0",
             ),
-            rx.text(child["name"], size="2", color=rx.color("gray", 12)),
+            rx.text(
+                child["name"],
+                size="2",
+                color=rx.color("gray", 12),
+                width="100%",
+                style={
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                    "whiteSpace": "nowrap",
+                    "minWidth": 0,
+                },
+            ),
             rx.hstack(
                 rx.text(child.get("type", "File"), size="1", color=MUTED_TEXT),
                 rx.spacer(),
                 rx.text(child.get("size", "-"), size="1", color=MUTED_TEXT),
                 width="100%",
                 align="center",
+                min_width="0",
             ),
             rx.text(child.get("uploaded_at", child.get("modified_at", "-")), size="1", color=MUTED_TEXT),
             align="start",
             spacing="2",
+            width="100%",
+            min_width="0",
         ),
         bg=rx.cond(
             child["name"] == FilesState.selected_child_file_name,
@@ -1230,6 +1436,9 @@ def active_child_file_card(child: dict[str, str]) -> rx.Component:
         min_width="200px",
         min_height="200px",
         height="100%",
+        width="100%",
+        max_width="100%",
+        overflow="hidden",
         class_name="files-grid-card",
         cursor="pointer",
         _hover={"border_color": border_accent},
@@ -1237,68 +1446,166 @@ def active_child_file_card(child: dict[str, str]) -> rx.Component:
     )
 
 
+def _table_meta_cell(content, *, display=None) -> rx.Component:
+    return rx.el.td(
+        content,
+        style={
+            "padding": "14px 16px",
+            "whiteSpace": "nowrap",
+            "fontSize": "13px",
+            "color": _mode("#374151", "#d1d5db"),
+            "textAlign": "left",
+            "verticalAlign": "middle",
+        },
+        display=display,
+    )
+
+
+def _index_status_pill(child: dict[str, str]) -> rx.Component:
+    """Status chip for INDEX column — width hugs label (avoids stretched pill in wide <td>)."""
+    idx = child.get("index_status", "—")
+    pill_common = {"width": "max-content", "max_width": "100%"}
+    return rx.cond(
+        child.get("index_status", "") == "completed",
+        rx.box(
+            rx.text(idx, style={"fontSize": "11px", "fontWeight": "500", "color": accent_muted_fg}),
+            padding="3px 10px",
+            border_radius="20px",
+            border=f"1px solid {accent_soft_border}",
+            bg=_mode("#f0fdf4", "rgba(96, 202, 114, 0.14)"),
+            **pill_common,
+        ),
+        rx.cond(
+            child.get("index_status", "") == "processing",
+            rx.box(
+                rx.text(idx, style={"fontSize": "11px", "fontWeight": "500", "color": _mode("#92400e", "#fcd34d")}),
+                padding="3px 10px",
+                border_radius="20px",
+                border=f"1px solid {_mode('#fde68a', '#78350f')}",
+                bg=_mode("#fffbeb", "rgba(251, 191, 36, 0.12)"),
+                **pill_common,
+            ),
+            rx.cond(
+                child.get("index_status", "") == "failed",
+                rx.box(
+                    rx.text(idx, style={"fontSize": "11px", "fontWeight": "500", "color": _mode("#b91c1c", "#fca5a5")}),
+                    padding="3px 10px",
+                    border_radius="20px",
+                    border=f"1px solid {_mode('#fecaca', '#7f1d1d')}",
+                    bg=_mode("#fef2f2", "rgba(248, 113, 113, 0.12)"),
+                    **pill_common,
+                ),
+                rx.box(
+                    rx.text(idx, style={"fontSize": "11px", "fontWeight": "500", "color": _mode("#374151", "#9ca3af")}),
+                    padding="3px 10px",
+                    border_radius="20px",
+                    border=f"1px solid {BORDER_COLOR}",
+                    bg=_mode("#f9fafb", "#1f2937"),
+                    **pill_common,
+                ),
+            ),
+        ),
+    )
+
+
 def active_child_file_row(child: dict[str, str]) -> rx.Component:
-    """Table-like list row aligned with dashboard file explorer style."""
+    """Table-like list row (Files spec: hover, pills, delete)."""
+    cell_pad = {"padding": "14px 16px", "whiteSpace": "nowrap", "verticalAlign": "middle"}
+    icon_cell_pad = {**cell_pad, "textAlign": "center", "width": "52px", "paddingLeft": "8px", "paddingRight": "8px"}
+    date_display = ["none", "none", "table-cell", "table-cell"]
+    type_display = ["none", "table-cell", "table-cell", "table-cell"]
+    size_display = ["none", "none", "table-cell", "table-cell"]
+    index_display = ["none", "none", "none", "table-cell"]
+    status_label = child.get("status", "Completed")
+    file_icon_color = _file_type_icon_color(child)
     return rx.el.tr(
         rx.el.td(
-            rx.hstack(
-                rx.icon(tag=child["icon"], size=ICON_SIZE_SM),
-                rx.text(child["name"], size=TEXT_SIZE_MD, color=_mode("#0f172a", "#d8e5ff")),
-                spacing="2",
-                align="center",
-                width="100%",
-            ),
-            style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap"},
-        ),
-        rx.el.td(child.get("uploaded_at", child.get("modified_at", "-")), style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap", "color": _mode("#64748b", "#8da6d5")}),
-        rx.el.td(child.get("type", "File"), style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap", "color": _mode("#64748b", "#8da6d5")}),
-        rx.el.td(child.get("size", "-"), style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap", "color": _mode("#64748b", "#8da6d5")}),
-        rx.el.td(
-            rx.badge(
-                child.get("status", "Completed"),
-                color_scheme="green",
-                variant="soft",
-                size="1",
-            ),
-            style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap"},
+            rx.icon(tag=child["icon"], size=ICON_SIZE_MD, color=file_icon_color),
+            style=icon_cell_pad,
         ),
         rx.el.td(
-            rx.badge(
-                child.get("index_status", "—"),
-                color_scheme=rx.cond(
-                    child.get("index_status", "") == "completed",
-                    "green",
-                    rx.cond(
-                        child.get("index_status", "") == "processing",
-                        "yellow",
-                        rx.cond(
-                            child.get("index_status", "") == "failed",
-                            "red",
-                            "gray",
-                        ),
-                    ),
+            rx.tooltip(
+                rx.text(
+                    child["name"],
+                    style={
+                        "fontSize": "13px",
+                        "fontWeight": "500",
+                        "color": _mode("#111827", "#f9fafb"),
+                        "overflow": "hidden",
+                        "textOverflow": "ellipsis",
+                        "whiteSpace": "nowrap",
+                        "display": "block",
+                    },
                 ),
+                content=child["name"],
+                delay_duration=300,
+            ),
+            style={**cell_pad, "textAlign": "left", "overflow": "hidden"},
+            width=["auto", "auto", "300px", "400px"],
+            max_width=["160px", "200px", "300px", "400px"],
+        ),
+        _table_meta_cell(child.get("uploaded_at", child.get("modified_at", "-")), display=date_display),
+        rx.el.td(
+            rx.badge(
+                child["ext"],
+                color_scheme=child["badge"],
                 variant="soft",
                 size="1",
+                radius="full",
             ),
-            style={"padding": "0.48rem 0.65rem", "whiteSpace": "nowrap"},
+            style={**cell_pad, "textAlign": "left"},
+            display=type_display,
+        ),
+        _table_meta_cell(child.get("size", "-"), display=size_display),
+        rx.el.td(
+            rx.box(
+                rx.text(
+                    status_label,
+                    style={"fontSize": "11px", "fontWeight": "500", "color": _mode("#065f46", "#a7e8b2")},
+                ),
+                padding="3px 10px",
+                border_radius="20px",
+                bg=_mode("#d1fae5", "rgba(34, 197, 94, 0.18)"),
+                width="max-content",
+                max_width="100%",
+            ),
+            style={**cell_pad, "textAlign": "left"},
+        ),
+        rx.el.td(
+            _index_status_pill(child),
+            style={**cell_pad, "textAlign": "left"},
+            display=index_display,
         ),
         rx.el.td(
             rx.button(
-                rx.icon("trash", size=ICON_SIZE_XS),
+                rx.icon("trash", size=ICON_SIZE_XS, color="inherit"),
                 variant="ghost",
                 size="1",
                 title="Delete file",
-                color_scheme="gray",
                 on_click=FilesState.request_delete_child_confirm(child["name"]),
+                min_width="28px",
+                min_height="28px",
+                border_radius="6px",
+                color=accent_muted_fg,
+                bg="transparent",
+                _hover={
+                    "color": "#ef4444",
+                    "background": _mode("#fef2f2", "rgba(248, 113, 113, 0.15)"),
+                },
+                _focus_visible={
+                    "outline": "2px solid",
+                    "outline_color": accent_muted_fg,
+                    "outline_offset": "1px",
+                },
             ),
-            style={"padding": "0.48rem 0.65rem", "textAlign": "center"},
+            style={**cell_pad, "textAlign": "center"},
         ),
+        class_name="files-table-row",
         style={
-            "borderBottom": f"1px solid {_mode('#d8e3f3', '#183058')}",
+            "borderBottom": f"1px solid {_mode('#f3f4f6', '#1f2937')}",
             "background": rx.cond(
                 child["name"] == FilesState.selected_child_file_name,
-                accent_soft_bg,
+                _mode("#f0fdf4", "rgba(96, 202, 114, 0.12)"),
                 "transparent",
             ),
             "cursor": "pointer",
@@ -1310,18 +1617,40 @@ def active_child_file_row(child: dict[str, str]) -> rx.Component:
 def active_children_table() -> rx.Component:
     """Dashboard-style list table with fixed headers and action column."""
     # Reuse one style object so header tweaks happen in one place.
-    action_header_style = {**TABLE_HEADER_BASE_STYLE, "textAlign": "center"}
+    date_display = ["none", "none", "table-cell", "table-cell"]
+    type_display = ["none", "table-cell", "table-cell", "table-cell"]
+    size_display = ["none", "none", "table-cell", "table-cell"]
+    index_display = ["none", "none", "none", "table-cell"]
+    icon_header_style = {
+        **TABLE_HEADER_BASE_STYLE,
+        "textAlign": "center",  # ← Fixed: match body cell textAlign: "center"
+        "width": "52px",
+        "paddingLeft": "8px",
+        "paddingRight": "8px",
+        "color": "transparent",
+        "userSelect": "none",
+    }
+    action_header_style = {
+        **TABLE_HEADER_BASE_STYLE,
+        "textAlign": "center",  # ← Fixed: match body cell textAlign: "center"
+        "width": "56px",
+        "paddingLeft": "8px",
+        "paddingRight": "8px",
+        "color": "transparent",
+        "userSelect": "none",
+    }
     return rx.box(
         rx.el.table(
             rx.el.thead(
                 rx.el.tr(
+                    rx.el.th("", style=icon_header_style),
                     rx.el.th("NAME", style=TABLE_HEADER_BASE_STYLE),
-                    rx.el.th("DATE MODIFIED", style=TABLE_HEADER_BASE_STYLE),
-                    rx.el.th("TYPE", style=TABLE_HEADER_BASE_STYLE),
-                    rx.el.th("SIZE", style=TABLE_HEADER_BASE_STYLE),
+                    rx.el.th("DATE MODIFIED", style=TABLE_HEADER_BASE_STYLE, display=date_display),
+                    rx.el.th("TYPE", style=TABLE_HEADER_BASE_STYLE, display=type_display),
+                    rx.el.th("SIZE", style=TABLE_HEADER_BASE_STYLE, display=size_display),
                     rx.el.th("STATUS", style=TABLE_HEADER_BASE_STYLE),
-                    rx.el.th("INDEX", style=TABLE_HEADER_BASE_STYLE),
-                    rx.el.th("ACTION", style=action_header_style),
+                    rx.el.th("INDEX", style=TABLE_HEADER_BASE_STYLE, display=index_display),
+                    rx.el.th("", style=action_header_style),
                 )
             ),
             rx.el.tbody(
@@ -1330,12 +1659,16 @@ def active_children_table() -> rx.Component:
                     lambda child: active_child_file_row(child),
                 )
             ),
-            style={"width": "100%", "borderCollapse": "collapse"},
+            # Fix Bug 3: table-layout fixed makes th widths authoritative for all columns
+            style={"width": "100%", "borderCollapse": "collapse", "tableLayout": "fixed"},
+            class_name="files-data-table",
         ),
         width="100%",
-        overflow_x="auto",
-        border=f"1px solid {BORDER_COLOR}",
-        border_radius="8px",
+        margin_top="16px",
+        overflow_x=["auto", "auto", "hidden", "hidden"],
+        overflow_y="visible",
+        border=f"1px solid {_mode('#e5e7eb', '#2d3748')}",
+        border_radius="12px",
         bg=_mode("#ffffff", "#081326"),
     )
 
@@ -1527,8 +1860,8 @@ def file_preview_panel() -> rx.Component:
         border=f"1px solid {BORDER_COLOR}",
         border_radius="12px",
         padding="1rem",
-        height="calc(100vh - 170px)",
-        min_height="560px",
+        height="100%",
+        min_height="0",
         width="100%",
         bg=PANEL_BG,
         position="relative",
@@ -1544,54 +1877,45 @@ def files_panel() -> rx.Component:
         ),
         # Panel header row.
         rx.vstack(
-            rx.hstack(
+            rx.flex(
                 rx.hstack(
-                    rx.icon("folder-open", size=16, color=PALETTE_PRIMARY_LIGHT),
-                    rx.heading(
+                    rx.icon("folder-open", size=18, color=accent_muted_fg),
+                    rx.text(
                         rx.cond(
                             FilesState.expanded_folder_name != "",
                             FilesState.expanded_folder_name,
                             "Explorer",
                         ),
-                        size="4",
-                        weight="bold",
-                        style={"letterSpacing": "-0.02em"},
+                        style={
+                            "fontSize": "18px",
+                            "fontWeight": "700",
+                            "color": text_primary,
+                            "letterSpacing": "-0.02em",
+                        },
                     ),
                     spacing="2",
                     align="center",
                 ),
-                rx.text(FilesState.active_child_count_label, size="1", color=_mode("#64748b", "#8da6d5")),
-                rx.spacer(),
-                rx.hstack(
-                    icon_button(
-                        "layout-grid",
-                        "Grid view",
-                        on_click=FilesState.set_grid_view,
-                        active=FilesState.view_mode == "grid",
-                    ),
-                    icon_button(
-                        "list",
-                        "List view",
-                        on_click=FilesState.set_list_view,
-                        active=FilesState.view_mode == "list",
-                    ),
-                    spacing="2",
-                    class_name="files-view-toggle",
+                rx.text(
+                    FilesState.active_child_count_label,
+                    style={"fontSize": "13px", "color": MUTED_TEXT},
                 ),
+                rx.spacer(),
+                _files_panel_view_toggle(),
                 width="100%",
                 align="center",
+                direction=rx.breakpoints(initial="column", sm="row", md="row", lg="row"),
+                gap=["8px", "0", "0", "0"],
             ),
             rx.text(
                 rx.cond(FilesState.expanded_folder_name != "", FilesState.visible_child_count_label, ""),
-                size="1",
-                color=MUTED_TEXT,
+                style={"fontSize": "13px", "color": MUTED_TEXT},
             ),
             rx.cond(
                 FilesState.expanded_folder_name != "",
                 rx.text(
                     "Drop files anywhere on this panel to upload to this folder.",
-                    size="1",
-                    color=accent_muted_fg,
+                    style={"fontSize": "13px", "color": MUTED_TEXT},
                 ),
             ),
             rx.cond(
@@ -1603,70 +1927,112 @@ def files_panel() -> rx.Component:
                             value=FilesState.search_query,
                             on_change=FilesState.set_search_query,
                             size="2",
-                            width=rx.breakpoints(initial="100%", sm="320px"),
-                            bg=_mode("#ffffff", "#071126"),
-                            border=f"1px solid {BORDER_COLOR}",
-                            color=_mode("#0f172a", "#d6deff"),
-                            _placeholder={"color": _mode("#94a3b8", "#6f86b3")},
+                            width=["100%", "200px", "240px", "280px"],
+                            font_size="13px",
+                            padding="8px 14px",
+                            border_radius="8px",
+                            bg=chat_input_bg,
+                            border=f"1px solid {_mode('#e5e7eb', '#374151')}",
+                            color=text_primary,
+                            _placeholder={"color": _mode("#9ca3af", "#6b7280")},
+                            _focus={
+                                "border_color": chat_input_focus_border,
+                                "box_shadow": chat_focus_ring,
+                            },
                         ),
-                        panel_action_button(
-                            "All",
-                            active=FilesState.active_type_filter == "all",
-                            on_click=lambda: FilesState.set_type_filter("all"),
+                        rx.box(
+                            panel_action_button(
+                                "All",
+                                active=FilesState.active_type_filter == "all",
+                                on_click=lambda: FilesState.set_type_filter("all"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "PDF",
-                            active=FilesState.active_type_filter == "pdf",
-                            on_click=lambda: FilesState.set_type_filter("pdf"),
+                        rx.box(
+                            panel_action_button(
+                                "PDF",
+                                active=FilesState.active_type_filter == "pdf",
+                                on_click=lambda: FilesState.set_type_filter("pdf"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "Image",
-                            active=FilesState.active_type_filter == "image",
-                            on_click=lambda: FilesState.set_type_filter("image"),
+                        rx.box(
+                            panel_action_button(
+                                "Image",
+                                active=FilesState.active_type_filter == "image",
+                                on_click=lambda: FilesState.set_type_filter("image"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "Doc",
-                            active=FilesState.active_type_filter == "doc",
-                            on_click=lambda: FilesState.set_type_filter("doc"),
+                        rx.box(
+                            panel_action_button(
+                                "Doc",
+                                active=FilesState.active_type_filter == "doc",
+                                on_click=lambda: FilesState.set_type_filter("doc"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "Sheet",
-                            active=FilesState.active_type_filter == "sheet",
-                            on_click=lambda: FilesState.set_type_filter("sheet"),
+                        rx.box(
+                            panel_action_button(
+                                "Sheet",
+                                active=FilesState.active_type_filter == "sheet",
+                                on_click=lambda: FilesState.set_type_filter("sheet"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "Uploaded: Newest",
-                            active=(FilesState.sort_mode == "uploaded_desc") | (FilesState.sort_mode == "modified_desc"),
-                            on_click=lambda: FilesState.set_sort_mode("uploaded_desc"),
+                        rx.box(
+                            panel_action_button(
+                                "Uploaded: Newest",
+                                active=(FilesState.sort_mode == "uploaded_desc") | (FilesState.sort_mode == "modified_desc"),
+                                on_click=lambda: FilesState.set_sort_mode("uploaded_desc"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "Uploaded: Oldest",
-                            active=(FilesState.sort_mode == "uploaded_asc") | (FilesState.sort_mode == "modified_asc"),
-                            on_click=lambda: FilesState.set_sort_mode("uploaded_asc"),
+                        rx.box(
+                            panel_action_button(
+                                "Uploaded: Oldest",
+                                active=(FilesState.sort_mode == "uploaded_asc") | (FilesState.sort_mode == "modified_asc"),
+                                on_click=lambda: FilesState.set_sort_mode("uploaded_asc"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "Name A-Z",
-                            active=FilesState.sort_mode == "name_asc",
-                            on_click=lambda: FilesState.set_sort_mode("name_asc"),
+                        rx.box(
+                            panel_action_button(
+                                "Name A-Z",
+                                active=FilesState.sort_mode == "name_asc",
+                                on_click=lambda: FilesState.set_sort_mode("name_asc"),
+                            ),
+                            flex_shrink="0",
                         ),
-                        panel_action_button(
-                            "Size",
-                            active=FilesState.sort_mode == "size_desc",
-                            on_click=lambda: FilesState.set_sort_mode("size_desc"),
+                        rx.box(
+                            panel_action_button(
+                                "Size",
+                                active=FilesState.sort_mode == "size_desc",
+                                on_click=lambda: FilesState.set_sort_mode("size_desc"),
+                            ),
+                            flex_shrink="0",
                         ),
                         rx.cond(
                             FilesState.search_query != "",
-                            rx.button(
-                                "Clear",
-                                variant="ghost",
-                                size="1",
-                                on_click=FilesState.clear_search_query,
+                            rx.box(
+                                rx.button(
+                                    "Clear",
+                                    variant="ghost",
+                                    size="1",
+                                    on_click=FilesState.clear_search_query,
+                                ),
+                                flex_shrink="0",
                             ),
                         ),
                         spacing="2",
                         width="100%",
                         align="center",
-                        flex_wrap="wrap",
+                        display="flex",
+                        flex_wrap=["nowrap", "wrap", "wrap", "nowrap"],
+                        overflow_x=["auto", "visible", "visible", "visible"],
+                        gap="8px",
+                        padding_bottom=["4px", "0", "0", "0"],
+                        style={"WebkitOverflowScrolling": "touch", "scrollbarWidth": "none"},
                     ),
                     width="100%",
                     spacing="2",
@@ -1744,13 +2110,13 @@ def files_panel() -> rx.Component:
         ),
         spacing="4",
         width="100%",
-        min_height=rx.breakpoints(initial="calc(100vh - 110px)", md="calc(100vh - 130px)"),
+        min_height="0",
         align="start",
         bg=PANEL_BG,
-        border=f"1px solid {BORDER_COLOR}",
-        border_radius="12px",
-        padding="0.75rem",
-        box_shadow=SHADOW_SM,
+        border=f"1px solid {_mode('#e5e7eb', '#374151')}",
+        border_radius="16px",
+        padding=["12px", "16px", "20px", "24px"],
+        box_shadow=files_panel_card_shadow,
     )
     return rx.upload.root(
         rx.box(
@@ -1772,4 +2138,3 @@ def files_panel() -> rx.Component:
             "box_shadow": "inset 0 0 0 2px rgba(34, 197, 94, 0.5)",
         },
     )
-
