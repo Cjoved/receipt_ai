@@ -102,7 +102,7 @@ def _files_view_toggle_btn(
         position="relative",
         isolation="isolate",
         border_radius=RADIUS_SM,
-        display=["none", "flex", "flex", "flex"],
+        display="flex",
         align_items="center",
         justify_content="center",
         bg=rx.cond(active, "#1a6b45", "transparent"),
@@ -1887,25 +1887,32 @@ def files_panel() -> rx.Component:
                             "Explorer",
                         ),
                         style={
-                            "fontSize": "18px",
+                            "fontSize": ["16px", "18px", "18px", "18px"],
                             "fontWeight": "700",
                             "color": text_primary,
                             "letterSpacing": "-0.02em",
+                            "overflow": "hidden",
+                            "textOverflow": "ellipsis",
+                            "whiteSpace": "nowrap",
+                            "maxWidth": ["160px", "none", "none", "none"],
                         },
                     ),
                     spacing="2",
                     align="center",
+                    flex="1",
+                    min_width="0",
                 ),
                 rx.text(
                     FilesState.active_child_count_label,
                     style={"fontSize": "13px", "color": MUTED_TEXT},
+                    display=["none", "block", "block", "block"],
                 ),
                 rx.spacer(),
                 _files_panel_view_toggle(),
                 width="100%",
                 align="center",
-                direction=rx.breakpoints(initial="column", sm="row", md="row", lg="row"),
-                gap=["8px", "0", "0", "0"],
+                direction="row",
+                gap="8px",
             ),
             rx.text(
                 rx.cond(FilesState.expanded_folder_name != "", FilesState.visible_child_count_label, ""),
@@ -1921,13 +1928,14 @@ def files_panel() -> rx.Component:
             rx.cond(
                 FilesState.expanded_folder_name != "",
                 rx.vstack(
-                    rx.hstack(
+                    rx.vstack(
+                        # Search input — full width on all breakpoints
                         rx.input(
                             placeholder="Search files...",
                             value=FilesState.search_query,
                             on_change=FilesState.set_search_query,
                             size="2",
-                            width=["100%", "200px", "240px", "280px"],
+                            width="100%",
                             font_size="13px",
                             padding="8px 14px",
                             border_radius="8px",
@@ -1940,99 +1948,105 @@ def files_panel() -> rx.Component:
                                 "box_shadow": chat_focus_ring,
                             },
                         ),
+                        # Filter chips row — scrollable on all breakpoints
                         rx.box(
-                            panel_action_button(
-                                "All",
-                                active=FilesState.active_type_filter == "all",
-                                on_click=lambda: FilesState.set_type_filter("all"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "PDF",
-                                active=FilesState.active_type_filter == "pdf",
-                                on_click=lambda: FilesState.set_type_filter("pdf"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "Image",
-                                active=FilesState.active_type_filter == "image",
-                                on_click=lambda: FilesState.set_type_filter("image"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "Doc",
-                                active=FilesState.active_type_filter == "doc",
-                                on_click=lambda: FilesState.set_type_filter("doc"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "Sheet",
-                                active=FilesState.active_type_filter == "sheet",
-                                on_click=lambda: FilesState.set_type_filter("sheet"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "Uploaded: Newest",
-                                active=(FilesState.sort_mode == "uploaded_desc") | (FilesState.sort_mode == "modified_desc"),
-                                on_click=lambda: FilesState.set_sort_mode("uploaded_desc"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "Uploaded: Oldest",
-                                active=(FilesState.sort_mode == "uploaded_asc") | (FilesState.sort_mode == "modified_asc"),
-                                on_click=lambda: FilesState.set_sort_mode("uploaded_asc"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "Name A-Z",
-                                active=FilesState.sort_mode == "name_asc",
-                                on_click=lambda: FilesState.set_sort_mode("name_asc"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            panel_action_button(
-                                "Size",
-                                active=FilesState.sort_mode == "size_desc",
-                                on_click=lambda: FilesState.set_sort_mode("size_desc"),
-                            ),
-                            flex_shrink="0",
-                        ),
-                        rx.cond(
-                            FilesState.search_query != "",
                             rx.box(
-                                rx.button(
-                                    "Clear",
-                                    variant="ghost",
-                                    size="1",
-                                    on_click=FilesState.clear_search_query,
+                                panel_action_button(
+                                    "All",
+                                    active=FilesState.active_type_filter == "all",
+                                    on_click=lambda: FilesState.set_type_filter("all"),
                                 ),
                                 flex_shrink="0",
                             ),
+                            rx.box(
+                                panel_action_button(
+                                    "PDF",
+                                    active=FilesState.active_type_filter == "pdf",
+                                    on_click=lambda: FilesState.set_type_filter("pdf"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.box(
+                                panel_action_button(
+                                    "Image",
+                                    active=FilesState.active_type_filter == "image",
+                                    on_click=lambda: FilesState.set_type_filter("image"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.box(
+                                panel_action_button(
+                                    "Doc",
+                                    active=FilesState.active_type_filter == "doc",
+                                    on_click=lambda: FilesState.set_type_filter("doc"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.box(
+                                panel_action_button(
+                                    "Sheet",
+                                    active=FilesState.active_type_filter == "sheet",
+                                    on_click=lambda: FilesState.set_type_filter("sheet"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.box(
+                                panel_action_button(
+                                    "Uploaded: Newest",
+                                    active=(FilesState.sort_mode == "uploaded_desc") | (FilesState.sort_mode == "modified_desc"),
+                                    on_click=lambda: FilesState.set_sort_mode("uploaded_desc"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.box(
+                                panel_action_button(
+                                    "Uploaded: Oldest",
+                                    active=(FilesState.sort_mode == "uploaded_asc") | (FilesState.sort_mode == "modified_asc"),
+                                    on_click=lambda: FilesState.set_sort_mode("uploaded_asc"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.box(
+                                panel_action_button(
+                                    "Name A-Z",
+                                    active=FilesState.sort_mode == "name_asc",
+                                    on_click=lambda: FilesState.set_sort_mode("name_asc"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.box(
+                                panel_action_button(
+                                    "Size",
+                                    active=FilesState.sort_mode == "size_desc",
+                                    on_click=lambda: FilesState.set_sort_mode("size_desc"),
+                                ),
+                                flex_shrink="0",
+                            ),
+                            rx.cond(
+                                FilesState.search_query != "",
+                                rx.box(
+                                    rx.button(
+                                        "Clear",
+                                        variant="ghost",
+                                        size="1",
+                                        on_click=FilesState.clear_search_query,
+                                    ),
+                                    flex_shrink="0",
+                                ),
+                            ),
+                            display="flex",
+                            flex_direction="row",
+                            flex_wrap="nowrap",
+                            align_items="center",
+                            overflow_x="auto",
+                            gap="8px",
+                            width="100%",
+                            padding_bottom="4px",
+                            style={"WebkitOverflowScrolling": "touch", "scrollbarWidth": "none", "msOverflowStyle": "none"},
                         ),
-                        spacing="2",
                         width="100%",
-                        align="center",
-                        display="flex",
-                        flex_wrap=["nowrap", "wrap", "wrap", "nowrap"],
-                        overflow_x=["auto", "visible", "visible", "visible"],
-                        gap="8px",
-                        padding_bottom=["4px", "0", "0", "0"],
-                        style={"WebkitOverflowScrolling": "touch", "scrollbarWidth": "none"},
+                        spacing="2",
+                        align="start",
                     ),
                     width="100%",
                     spacing="2",
@@ -2040,78 +2054,94 @@ def files_panel() -> rx.Component:
             ),
             width="100%",
             spacing="1",
+            flex_shrink="0",
         ),
-        # Empty-state when no folder selected (default on load).
-        rx.cond(
-            FilesState.expanded_folder_name == "",
-            files_explorer_no_folder_placeholder(),
-        ),
-        rx.cond(
-            FilesState.is_loading_folder,
-            rx.box(
-                rx.vstack(
-                    rx.spinner(size="3"),
-                    rx.text(
-                        rx.cond(
-                            FilesState.loading_folder_name != "",
-                            f"Loading folder: {FilesState.loading_folder_name}",
-                            "Loading folder files...",
-                        ),
-                        size="2",
-                        color=rx.color("gray", 11),
-                    ),
-                    spacing="2",
-                    align="center",
-                ),
-                width="100%",
-                min_height="220px",
-                border=f"1px dashed {BORDER_COLOR}",
-                border_radius="10px",
-                bg=rx.color("gray", 1),
-                display="flex",
-                align_items="center",
-                justify_content="center",
-            ),
-        ),
-        # Main content area: show either cards/list OR full preview.
-        rx.cond(
-            FilesState.is_loading_folder == False,
+        # Scrollable body: empty-state / loading / cards+list / preview
+        rx.box(
+            # Empty-state when no folder selected (default on load).
             rx.cond(
-                FilesState.expanded_folder_name != "",
+                FilesState.expanded_folder_name == "",
+                files_explorer_no_folder_placeholder(),
+            ),
+            rx.cond(
+                FilesState.is_loading_folder,
+                rx.box(
+                    rx.vstack(
+                        rx.spinner(size="3"),
+                        rx.text(
+                            rx.cond(
+                                FilesState.loading_folder_name != "",
+                                f"Loading folder: {FilesState.loading_folder_name}",
+                                "Loading folder files...",
+                            ),
+                            size="2",
+                            color=rx.color("gray", 11),
+                        ),
+                        spacing="2",
+                        align="center",
+                    ),
+                    width="100%",
+                    min_height="220px",
+                    border=f"1px dashed {BORDER_COLOR}",
+                    border_radius="10px",
+                    bg=rx.color("gray", 1),
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
+                ),
+            ),
+            # Main content area: show either cards/list OR full preview.
+            rx.cond(
+                FilesState.is_loading_folder == False,
                 rx.cond(
-                    FilesState.has_selected_child_file,
-                    file_preview_panel(),
+                    FilesState.expanded_folder_name != "",
                     rx.cond(
-                        FilesState.show_no_results_hint,
-                        files_no_results_placeholder(),
+                        FilesState.has_selected_child_file,
+                        file_preview_panel(),
                         rx.cond(
-                            FilesState.show_empty_folder_hint,
-                            files_empty_folder_placeholder(),
-                            rx.box(
-                                rx.cond(
-                                    FilesState.view_mode == "grid",
-                                    rx.box(
-                                        rx.foreach(
-                                            FilesState.visible_folder_children,
-                                            lambda child: active_child_file_card(child),
+                            FilesState.show_no_results_hint,
+                            files_no_results_placeholder(),
+                            rx.cond(
+                                FilesState.show_empty_folder_hint,
+                                files_empty_folder_placeholder(),
+                                rx.box(
+                                    rx.cond(
+                                        FilesState.view_mode == "grid",
+                                        rx.box(
+                                            rx.foreach(
+                                                FilesState.visible_folder_children,
+                                                lambda child: active_child_file_card(child),
+                                            ),
+                                            class_name="files-grid-cards",
+                                            width="100%",
+                                            style={
+                                                "display": "grid",
+                                                "gridTemplateColumns": "repeat(auto-fill, minmax(min(140px, 100%), 1fr))",
+                                                "gap": "10px",
+                                            },
                                         ),
-                                        class_name="files-grid-cards",
-                                        width="100%",
+                                        active_children_table(),
                                     ),
-                                    active_children_table(),
+                                    width="100%",
+                                    align_self="start",
                                 ),
-                                width="100%",
-                                align_self="start",
                             ),
                         ),
                     ),
                 ),
             ),
+            flex="1 1 0%",
+            overflow_y="auto",
+            min_height="0",
+            width="100%",
         ),
         spacing="4",
         width="100%",
+        height="100%",
         min_height="0",
         align="start",
+        display="flex",
+        flex_direction="column",
         bg=PANEL_BG,
         border=f"1px solid {_mode('#e5e7eb', '#374151')}",
         border_radius="16px",
@@ -2125,9 +2155,16 @@ def files_panel() -> rx.Component:
             panel_drop_confirm_layer(),
             position="relative",
             width="100%",
+            height="100%",
+            display="flex",
+            flex_direction="column",
         ),
         id=FILES_PANEL_UPLOAD_ZONE_ID,
         width="100%",
+        height="100%",
+        flex="1",
+        display="flex",
+        flex_direction="column",
         multiple=True,
         max_files=20,
         accept=FILES_UPLOAD_ACCEPT,
