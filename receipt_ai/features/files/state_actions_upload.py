@@ -165,6 +165,7 @@ class FilesUploadActionsMixin:
 
         def cooperative_stop(message: str) -> dict[str, object]:
             self.upload_error = message
+            self._reset_upload_loading_state()
             self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
             return self._upload_pipeline_outcome(
                 "stop",
@@ -227,8 +228,18 @@ class FilesUploadActionsMixin:
             return cooperative_stop("Upload cancelled by user.")
 
         extracted_text = str(getattr(extraction_result, "text", "") or "").strip()
-        if extraction_result.status == "failed" or not extracted_text or not is_likely_receipt(extracted_text):
+        if extraction_result.status == "failed":
+            detail = str(getattr(extraction_result, "error", "") or "").strip()
+            self.upload_error = (
+                f"Upload failed for '{normalized_name}': {detail}"
+                if detail
+                else f"Upload failed for '{normalized_name}'."
+            )
+            self._reset_upload_loading_state()
+            return self._upload_pipeline_outcome("warning", flushes=flushes, events=[rx.toast.warning(self.upload_error)])
+        if not extracted_text or not is_likely_receipt(extracted_text):
             self.upload_error = f"Upload rejected: '{normalized_name}' is not a valid receipt."
+            self._reset_upload_loading_state()
             return self._upload_pipeline_outcome("warning", flushes=flushes, events=[rx.toast.warning(self.upload_error)])
 
         self.upload_stage = "uploading"
@@ -482,6 +493,7 @@ class FilesUploadActionsMixin:
                 lowered = normalized_name.lower()
                 if self.upload_cancel_requested:
                     self.upload_error = "Stop execution."
+                    self._reset_upload_loading_state()
                     self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
                     yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
                     yield rx.toast.info(self.upload_error)
@@ -489,14 +501,20 @@ class FilesUploadActionsMixin:
                 validation_error = validate_upload_filename(file.filename)
                 if validation_error:
                     self.upload_error = validation_error
+                    self._reset_upload_loading_state()
+                    yield
                     yield rx.toast.warning(self.upload_error)
                     return
                 if lowered in existing_names:
                     self.upload_error = f"File '{normalized_name}' already exists in this folder."
+                    self._reset_upload_loading_state()
+                    yield
                     yield rx.toast.warning(self.upload_error)
                     return
                 if lowered in seen_batch:
                     self.upload_error = f"Duplicate file in selection: '{normalized_name}'."
+                    self._reset_upload_loading_state()
+                    yield
                     yield rx.toast.warning(self.upload_error)
                     return
                 seen_batch.add(lowered)
@@ -510,6 +528,7 @@ class FilesUploadActionsMixin:
                 yield
                 if self.upload_cancel_requested:
                     self.upload_error = "Stop execution."
+                    self._reset_upload_loading_state()
                     self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
                     yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
                     yield rx.toast.info(self.upload_error)
@@ -538,20 +557,35 @@ class FilesUploadActionsMixin:
                 # #endregion
                 if extraction_result.status == "cancelled":
                     self.upload_error = "Stop execution."
+                    self._reset_upload_loading_state()
                     self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
                     yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
                     yield rx.toast.info(self.upload_error)
                     return
                 if self.upload_cancel_requested:
                     self.upload_error = "Upload cancelled by user."
+                    self._reset_upload_loading_state()
                     self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
                     yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
                     yield rx.toast.info(self.upload_error)
                     return
 
                 extracted_text = str(getattr(extraction_result, "text", "") or "").strip()
-                if extraction_result.status == "failed" or not extracted_text or not is_likely_receipt(extracted_text):
+                if extraction_result.status == "failed":
+                    detail = str(getattr(extraction_result, "error", "") or "").strip()
+                    self.upload_error = (
+                        f"Upload failed for '{normalized_name}': {detail}"
+                        if detail
+                        else f"Upload failed for '{normalized_name}'."
+                    )
+                    self._reset_upload_loading_state()
+                    yield
+                    yield rx.toast.warning(self.upload_error)
+                    return
+                if not extracted_text or not is_likely_receipt(extracted_text):
                     self.upload_error = f"Upload rejected: '{normalized_name}' is not a valid receipt."
+                    self._reset_upload_loading_state()
+                    yield
                     yield rx.toast.warning(self.upload_error)
                     return
 
@@ -561,6 +595,7 @@ class FilesUploadActionsMixin:
                 yield
                 if self.upload_cancel_requested:
                     self.upload_error = "Stop execution."
+                    self._reset_upload_loading_state()
                     self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
                     yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
                     yield rx.toast.info(self.upload_error)
@@ -606,6 +641,7 @@ class FilesUploadActionsMixin:
                     if uploaded_names and uploaded_names[-1] == file.filename:
                         uploaded_names.pop()
                     self.upload_error = "Stop execution."
+                    self._reset_upload_loading_state()
                     self._finalize_upload_session_after_cooperative_stop(target_folder, uploaded_names)
                     yield rx.clear_selected_files(FILES_UPLOAD_ZONE_ID)
                     yield rx.toast.info(self.upload_error)
@@ -632,6 +668,8 @@ class FilesUploadActionsMixin:
                 self.select_child_file(uploaded_names[-1])
             else:
                 self.upload_error = "No files selected for upload."
+                self._reset_upload_loading_state()
+                yield
                 yield rx.toast.warning(self.upload_error)
                 return
 
