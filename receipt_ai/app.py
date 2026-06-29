@@ -9,7 +9,6 @@ from receipt_ai.pages.files_page import files_page
 from receipt_ai.pages.forgot_password_page import forgot_password_page
 from receipt_ai.pages.login_page import login_page
 from receipt_ai.pages.not_found_page import not_found_page
-from receipt_ai.pages.register_page import register_page
 from receipt_ai.pages.reset_password_page import reset_password_page
 from receipt_ai.pages.settings_page import settings_page
 from receipt_ai.pages.verify_email_page import verify_email_page
@@ -68,13 +67,6 @@ def create_app() -> rx.App:
         route="/login",
         title="Receipt AI — Login",
         description="Sign in to access files and chat.",
-        on_load=AuthState.guard_login_route,
-    )
-    app.add_page(
-        register_page,
-        route="/register",
-        title="Receipt AI — Register",
-        description="Create a new Receipt AI account.",
         on_load=AuthState.guard_login_route,
     )
     app.add_page(

@@ -6,7 +6,6 @@ from receipt_ai.features.auth.service import (
     create_session_token,
     delete_session_token,
     get_session_user,
-    register_user,
     request_email_verification,
     request_password_reset,
     reset_password_with_token,
@@ -36,7 +35,8 @@ def primary_role_value(roles: list[str] | tuple[str, ...]) -> str:
 
 
 def post_login_route_value(roles: list[str] | tuple[str, ...]) -> str:
-    return "/files" if has_role_value(roles, "admin") else "/chat"
+    """Default landing after sign-in (admin-only deployment)."""
+    return "/files"
 
 
 class AuthState(rx.State):
@@ -44,10 +44,6 @@ class AuthState(rx.State):
 
     email: str = ""
     password: str = ""
-    register_email: str = ""
-    register_password: str = ""
-    register_password_confirm: str = ""
-    register_display_name: str = ""
     forgot_email: str = ""
     reset_token: str = ""
     reset_password: str = ""
@@ -203,6 +199,9 @@ class AuthState(rx.State):
         try:
             user = await authenticate_user(email, password, identity_key=email)
             if user is not None:
+                if not has_role_value(user.roles, "admin"):
+                    self.auth_error = "This workspace is restricted to administrator accounts."
+                    return None
                 cfg = AuthConfig.from_env()
                 if cfg.require_email_verified and not user.email_verified:
                     self.auth_error = "Please verify your email before signing in."
@@ -249,6 +248,16 @@ class AuthState(rx.State):
         if user is None:
             self._clear_auth_identity()
             return rx.redirect("/login")
+        if not has_role_value(user.roles, "admin"):
+            tok = self.auth_token
+            self._clear_auth_identity()
+            if tok:
+                try:
+                    await delete_session_token(tok)
+                except Exception:
+                    pass
+            self.auth_error = "This workspace is restricted to administrator accounts."
+            return rx.redirect("/login")
         self._apply_auth_user(user)
         cfg = AuthConfig.from_env()
         if cfg.require_email_verified and not user.email_verified:
@@ -263,7 +272,7 @@ class AuthState(rx.State):
         if guard is not None:
             return guard
         if not self.has_role("admin"):
-            return rx.redirect("/chat")
+            return rx.redirect("/login")
         return None
 
     async def guard_login_route(self):
@@ -276,6 +285,16 @@ class AuthState(rx.State):
                 self.auth_error = "Session check failed. Please sign in."
                 return None
             if user is not None:
+                if not has_role_value(user.roles, "admin"):
+                    tok = self.auth_token
+                    self._clear_auth_identity()
+                    if tok:
+                        try:
+                            await delete_session_token(tok)
+                        except Exception:
+                            pass
+                    self.auth_error = "This workspace is restricted to administrator accounts."
+                    return None
                 self._apply_auth_user(user)
                 cfg = AuthConfig.from_env()
                 if cfg.require_email_verified and not user.email_verified:
@@ -284,37 +303,6 @@ class AuthState(rx.State):
                 return rx.redirect(post_login_route_value(self.user_roles))
             self._clear_auth_identity()
         return None
-
-    async def register(self):
-        email = self.register_email.strip().lower()
-        password = self.register_password
-        confirm = self.register_password_confirm
-        display_name = self.register_display_name.strip()
-        self.auth_error = ""
-        self.auth_info = ""
-        if not email or not password or not confirm:
-            self.auth_error = "Email and password are required."
-            return None
-        if password != confirm:
-            self.auth_error = "Password confirmation does not match."
-            return None
-        self.is_submitting = True
-        try:
-            await register_user(
-                email=email,
-                password=password,
-                display_name=(display_name or "User"),
-                identity_key=email,
-            )
-            self.auth_info = "Registration successful. Check your email for verification link."
-            self.register_password = ""
-            self.register_password_confirm = ""
-            return rx.redirect("/verify-email")
-        except Exception as exc:
-            self.auth_error = str(exc) or "Registration failed."
-            return None
-        finally:
-            self.is_submitting = False
 
     async def request_password_reset(self):
         email = self.forgot_email.strip().lower()
@@ -364,12 +352,10 @@ class AuthState(rx.State):
 
     async def resend_verification(self):
         email = self.email.strip().lower()
-        if not email:
-            email = self.register_email.strip().lower()
         self.auth_error = ""
         self.auth_info = ""
         if not email:
-            self.auth_error = "Provide your account email first."
+            self.auth_error = "Provide your account email first (use the same email as on the login page)."
             return None
         self.is_submitting = True
         try:
@@ -402,9 +388,6 @@ class AuthState(rx.State):
             return None
         finally:
             self.is_submitting = False
-
-    def go_to_register(self):
-        return rx.redirect("/register")
 
     def go_to_forgot_password(self):
         return rx.redirect("/forgot-password")

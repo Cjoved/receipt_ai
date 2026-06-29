@@ -6,7 +6,6 @@ from receipt_ai.components.auth_components import (
     auth_page_shell,
     auth_password_field,
     auth_primary_button,
-    auth_secondary_button,
     auth_status_stack,
     auth_text_input,
 )
@@ -16,7 +15,7 @@ from receipt_ai.features.auth.state import AuthState
 def login_page() -> rx.Component:
     return auth_page_shell(
         title="Welcome back",
-        subtitle="Sign in to your Receipt AI workspace.",
+        subtitle="Administrator sign-in. Use the account created via seed/bootstrap (admin role).",
         left_title="Receipt AI",
         left_description="Secure sign-in for your agriculture receipt and document workspace.",
         left_chips=[
@@ -51,16 +50,11 @@ def login_page() -> rx.Component:
                     button_type="submit",
                 ),
                 rx.text(
-                    "Use your workspace credentials to continue.",
+                    "Administrator accounts only. Contact your operator if you need access.",
                     size="1",
                     color=rx.color("gray", 9),
                 ),
                 rx.vstack(
-                    auth_secondary_button(
-                        "Create account",
-                        on_click=AuthState.go_to_register,
-                        disabled=AuthState.is_submitting,
-                    ),
                     auth_ghost_button(
                         "Forgot password",
                         on_click=AuthState.go_to_forgot_password,

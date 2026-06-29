@@ -71,11 +71,9 @@ async def main() -> None:
     await ensure_rbac_seed()
 
     await upsert_user("admin@receipt.ai", "AdminPass#12345", display_name="Admin", role_names=("admin",))
-    await upsert_user("user@receipt.ai", "UserPass#12345", display_name="User", role_names=("user",))
 
-    print("RBAC ready. Accounts created.")
+    print("RBAC ready. Admin account created.")
     print("admin@receipt.ai / AdminPass#12345")
-    print("user@receipt.ai / UserPass#12345")
 
 
 if __name__ == "__main__":

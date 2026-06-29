@@ -23,8 +23,9 @@ class AuthRbacStateTests(unittest.TestCase):
         self.assertEqual(primary_role_value([]), "user")
 
     def test_post_login_route_value(self):
+        # Admin-only deployment: successful sign-in always lands on /files.
         self.assertEqual(post_login_route_value(["admin"]), "/files")
-        self.assertEqual(post_login_route_value(["user"]), "/chat")
+        self.assertEqual(post_login_route_value(["user"]), "/files")
 
 
 class AuthGuardResiliencyTests(unittest.TestCase):

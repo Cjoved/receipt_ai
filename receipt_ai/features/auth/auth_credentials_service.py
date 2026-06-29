@@ -11,7 +11,6 @@ from receipt_ai.core.db.session import get_async_session
 from receipt_ai.features.auth.auth_mailer_service import send_email
 from receipt_ai.features.auth.auth_rate_limit_service import (
     check_login_rate_limit,
-    check_register_rate_limit,
     check_reset_rate_limit,
     clear_rate_limit,
 )
@@ -146,61 +145,6 @@ async def authenticate_user(email: str, password: str, *, identity_key: str = "d
         clear_rate_limit(f"login:{identity_key}")
         roles, perms = await _resolve_user_rbac(row.id)
         return _to_auth_user(row, roles, perms)
-
-
-async def register_user(
-    email: str,
-    password: str,
-    *,
-    display_name: str,
-    default_roles: tuple[str, ...] = ("user",),
-    identity_key: str = "default",
-) -> AuthUser:
-    cfg = AuthConfig.from_env()
-    allowed, retry_after = check_register_rate_limit(identity_key, cfg)
-    if not allowed:
-        raise RuntimeError(f"Too many registration attempts. Try again in {retry_after}s.")
-
-    clean = email.strip().lower()
-    if not clean:
-        raise RuntimeError("Email is required.")
-    pw_error = validate_password_strength(password)
-    if pw_error:
-        raise RuntimeError(pw_error)
-    name = display_name.strip() or "User"
-
-    async with get_async_session() as db:
-        exists = await db.scalar(select(User).where(User.email == clean))
-        if exists is not None:
-            raise RuntimeError("Email already registered.")
-        row = User(
-            email=clean,
-            password_hash=hash_password(password),
-            display_name=name,
-            is_active=True,
-            email_verified_at=None,
-        )
-        db.add(row)
-        await db.commit()
-        await db.refresh(row)
-
-        role_names = tuple({r.strip().lower() for r in default_roles if r and r.strip()})
-        if role_names:
-            role_rows = (await db.execute(select(Role).where(Role.name.in_(list(role_names))))).scalars().all()
-            for role in role_rows:
-                db.add(UserRole(user_id=row.id, role_id=role.id))
-            await db.commit()
-
-    token = await issue_email_verification_token(row.id, cfg)
-    verify_link = f"{cfg.app_base_url.rstrip('/')}/verify-email?token={token}"
-    send_email(
-        to_email=clean,
-        subject="Verify your Receipt AI email",
-        body_text=f"Welcome to Receipt AI.\n\nVerify your account by opening:\n{verify_link}\n\nThis link expires soon.",
-        config=cfg,
-    )
-    roles, perms = await _resolve_user_rbac(row.id)
-    return _to_auth_user(row, roles, perms)
 
 
 async def request_password_reset(email: str, *, identity_key: str = "default") -> None:
